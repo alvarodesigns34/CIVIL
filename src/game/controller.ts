@@ -24,6 +24,7 @@ import { civEra } from '../data/techs';
 import type { Unit } from '../sim/types';
 import { stepMilitary, deathLog, campLog, unitsAt, hostile, canEnter, orderMove, disband, recruit } from '../sim/military';
 import { UNIT } from '../data/units';
+import { LEVELS, canSpecialize, specialize, appointGovernor, type SpecDef } from '../sim/cities';
 import { settlementAt } from '../sim/world';
 import { isWater } from '../data/terrain';
 import { hexToPixel } from '../core/hex';
@@ -341,6 +342,15 @@ export class Controller {
       this.toast(`Ambición cumplida: ${def.name}`, `+${def.legacy} de legado`, 'good');
       sfx('good', this.settings);
     }
+    for (const lv of report.levels) {
+      const st = settlementById(s, lv.sid);
+      if (!st) continue;
+      if (lv.to > lv.from) {
+        this.toast(`${st.name} es ahora ${LEVELS[lv.to].name.toLowerCase()}`, 'Más vivienda, impuestos, saber y cultura.', 'good');
+        this.renderer.burst(st.col, st.row, 1.6);
+        sfx('built', this.settings);
+      } else this.toast(`${st.name} decae a ${LEVELS[lv.to].name.toLowerCase()}`, 'Sus necesidades llevan años sin cubrirse.', 'bad');
+    }
     if (report.traditionReady) this.toast('Nueva tradición disponible', 'Tu cultura ha madurado: elige una tradición.', 'good');
     for (const [k, r] of Object.entries(p.relations)) {
       if (r.state === 'war' && !prevWars.has(k)) {
@@ -602,6 +612,21 @@ export class Controller {
     }
     if (cmd === 'disband') this.clearUnits();
     sfx('select', this.settings);
+    notify();
+  }
+  specialize(sid: number, id: string) {
+    const st = settlementById(this.state, sid)!;
+    const why = canSpecialize(this.state, this.player, st, id);
+    if (why) return this.toast('No es posible', why, 'bad');
+    specialize(this.state, this.player, st, id);
+    this.renderer.burst(st.col, st.row, 1);
+    sfx('good', this.settings);
+    notify();
+  }
+  appoint(sid: number, g: { kind: string; name: string; age: number; loyalty: number }) {
+    if (this.player.res.influence < 15) return this.toast('Influencia insuficiente', 'Nombrar un gobernador cuesta 15.', 'bad');
+    appointGovernor(this.state, this.player, settlementById(this.state, sid)!, g);
+    sfx('good', this.settings);
     notify();
   }
   recruit(sid: number, type: string) {

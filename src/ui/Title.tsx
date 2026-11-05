@@ -9,6 +9,7 @@ import { Emblem } from './Emblem';
 import { Icon } from './Icon';
 import { cls } from './util';
 import { calendarYear } from '../sim/names';
+import { CULTURE_TRAIT } from '../sim/cities';
 
 const CULTURE_LABEL: Record<string, string> = {
   river: 'Ribereña', steppe: 'Esteparia', forest: 'Silvana', sea: 'Marinera', mountain: 'Andina', desert: 'Desértica', jungle: 'Selvática',
@@ -89,8 +90,9 @@ export function Title() {
                 <input id="civname" type="text" maxLength={18} placeholder={defaultName(culture)} value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
               </div>
               <div class="field">
-                <label>Cultura (estilo de nombres)</label>
+                <label>Cultura</label>
                 <div class="seg">{Object.entries(CULTURE_LABEL).map(([k, v]) => <button key={k} class={cls(culture === k && 'on')} onClick={() => setCulture(k)}>{v}</button>)}</div>
+                <div class="muted" style={{ fontSize: 13.5, marginTop: 6 }}><b>{CULTURE_TRAIT[culture].name}:</b> {CULTURE_TRAIT[culture].desc}</div>
               </div>
               <div class="field" style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
                 <div style={{ flex: 1 }}>

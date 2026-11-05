@@ -63,7 +63,12 @@ export interface Settlement {
   garrison: number; // soldados (calculado)
   defense: number; // calculado
   fort: number; // nivel de murallas 0..3
-  defHp?: number; // integridad de las defensas durante un asedio
+  defHp?: number;
+  level?: number; // prosperidad 0..5
+  lowYears?: number;
+  spec?: string; // especialización
+  specYear?: number;
+  governor?: { kind: string; name: string; age: number; loyalty: number }; // integridad de las defensas durante un asedio
   queue?: { type: string; prog: number }[]; // reclutamiento
   loyalty: number; // 0..100 (asentamientos conquistados)
   origCiv: number; // civ fundadora

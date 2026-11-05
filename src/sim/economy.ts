@@ -11,6 +11,8 @@ import { civFx, type Fx } from './mods';
 import { hexDistance } from '../core/hex';
 import { clamp } from '../core/noise';
 import { armyPower } from './military';
+import { cityYieldMult, cityConstruction } from './cities';
+import { maxProjects } from './actions';
 
 const PRIORITY: Record<string, number> = { food: 0, materials: 1, military: 2, faith: 3, knowledge: 4, trade: 5, craft: 6, civic: 7, housing: 8, wonder: 9 };
 export const CENTER_HOUSING = 30;
@@ -127,6 +129,7 @@ export function simulateEconomy(state: GameState, civ: Civ) {
   let soldiers = 0;
   let soldierPower = 0;
   const constructionSpeed = 1 + fx.construction;
+  let slots = maxProjects(state, civ);
 
   for (const s of sets) {
     const tiles = tilesOfSettlement(state, s);
@@ -140,7 +143,10 @@ export function simulateEconomy(state: GameState, civ: Civ) {
       const def = BUILDING[b.type];
       if (!def) continue;
       if (b.progress < 1) {
-        b.progress = Math.min(1, b.progress + constructionSpeed / def.time);
+        if (slots <= 0) { (b as any).queued = true; continue; }
+        slots--;
+        (b as any).queued = false;
+        b.progress = Math.min(1, b.progress + (constructionSpeed + cityConstruction(s)) / def.time);
         if (b.progress >= 1) {
           b.built = state.year;
           builtLog.push({ civ: civ.id, col: c, row: r, type: def.id });
@@ -154,7 +160,7 @@ export function simulateEconomy(state: GameState, civ: Civ) {
       if (def.jobs > 0 && !b.paused) jobsList.push({ c, r, t, def });
       else b.staff = 0;
     }
-    s.housing = Math.round(housing * (1 + fx.housing));
+    s.housing = Math.round(housing * (1 + fx.housing + 0.08 * (s.level ?? 0)));
     s.workforce = s.pop * clamp(0.58 + fx.workforce, 0.4, 0.75);
     // Por categoría y, dentro de ella, primero los puestos más productivos
     const perJob = (j: { c: number; r: number; def: BuildingDef }) => {
@@ -266,7 +272,7 @@ export function simulateEconomy(state: GameState, civ: Civ) {
     }
     const y = buildingYield(def, placeCtx(state, civ, s, c, r));
     for (const [k, v] of Object.entries(y.out)) {
-      const amount = (v as number) * eff * y.mult * prodMult(k as YieldId);
+      const amount = (v as number) * eff * y.mult * (prodMult(k as YieldId) + cityYieldMult(s, k as YieldId));
       addIncome(L, k as YieldId, def.name, amount);
     }
     if (def.upkeep) addExpense(L, 'gold', 'Mantenimiento', def.upkeep * (1 + fx.upkeep) * (era >= 1 ? 1 : 0));
@@ -288,6 +294,12 @@ export function simulateEconomy(state: GameState, civ: Civ) {
     addIncome(L, 'influence', 'Centros de población', (s.capital ? 1 : 0.4) * prodMult('influence'));
     addIncome(L, 'culture', 'Centros de población', (s.capital ? 0.6 : 0.3) * prodMult('culture'));
     addIncome(L, 'knowledge', 'Población', (1.2 + s.pop * 0.008) * prodMult('knowledge'));
+    const lv = s.level ?? 0;
+    if (lv) {
+      addIncome(L, 'knowledge', 'Prosperidad de las ciudades', lv * 0.6 * prodMult('knowledge'));
+      addIncome(L, 'culture', 'Prosperidad de las ciudades', lv * 0.4 * prodMult('culture'));
+    }
+    if (s.governor?.kind === 'steward') s.unrest = Math.max(0, s.unrest - 20);
     // Recolectores: población ociosa
     const idle = (s as any)._idle as number;
     if (idle > 0) {
@@ -301,7 +313,7 @@ export function simulateEconomy(state: GameState, civ: Civ) {
     }
   }
   const taxRate = (0.008 + era * 0.006) * (1 + fx.tax);
-  const taxes = totalPop * Math.max(0, taxRate);
+  const taxes = sets.reduce((a, s) => a + s.pop * (1 + 0.1 * (s.level ?? 0)), 0) * Math.max(0, taxRate);
   L.taxes = taxes;
   addIncome(L, 'gold', 'Impuestos', taxes * prodMult('gold'));
 
@@ -557,7 +569,7 @@ export function techCostFor(state: GameState, civ: Civ, id: string) {
   // Las civilizaciones grandes investigan más despacio (coordinar más territorio)
   cost *= 1 + 0.05 * Math.max(0, civSettlements(state, civ.id).length - 1);
   // Cada descubrimiento hace el siguiente algo más difícil
-  cost *= 1 + 0.02 * civ.techs.length;
+  cost *= 1 + 0.03 * civ.techs.length;
   return Math.round(cost);
 }
 

@@ -5,6 +5,8 @@ import { Icon, RES_COLOR } from './Icon';
 import { Emblem } from './Emblem';
 import { Thumb } from './Thumb';
 import { RecruitSection } from './UnitCard';
+import { CityView } from './CityView';
+import { LEVELS, SPEC } from '../sim/cities';
 import { settlementTier } from '../render/sprites';
 import { tileAt, settlementAt, settlementById } from '../sim/world';
 import { tileName, DEPOSITS, isLand } from '../data/terrain';
@@ -52,9 +54,9 @@ export function TileCard() {
   if (st) {
     title = st.name;
     const civ = s.civs[st.civ];
-    kicker = `${st.capital ? 'Capital' : 'Asentamiento'} de ${civ.name}`;
+    kicker = `${LEVELS[st.level ?? 0].name}${st.capital ? ' · capital' : ''}${st.spec ? ' · ' + SPEC[st.spec].name.toLowerCase() : ''} · ${civ.name}`;
     const nextFort = st.fort + 1;
-    body = (
+    body = civ.isPlayer ? <CityView st={st} /> : (
       <>
         <div class="grid2">
           <div class="kv"><span class="k">Población</span><span class="v">{fmt(st.pop)}</span></div>

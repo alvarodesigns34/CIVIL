@@ -80,7 +80,7 @@ export function startBuild(state: GameState, civ: Civ, id: string, col: number, 
   if (why) return why;
   const cost = buildCost(state, civ, def);
   if (!canAfford(civ, cost)) return 'Recursos insuficientes';
-  if (activeProjects(state, civ) >= maxProjects(state, civ)) return `Máximo ${maxProjects(state, civ)} obras simultáneas`;
+  if (activeProjects(state, civ) >= maxProjects(state, civ) * 2 + 2) return `Cola de obras llena (${maxProjects(state, civ)} a la vez y ${maxProjects(state, civ) + 2} en espera)`;
   for (const [k, v] of Object.entries(cost)) civ.res[k as ResId] -= v as number;
   const t = tileAt(state, col, row)!;
   if (def.upgradeOf) {

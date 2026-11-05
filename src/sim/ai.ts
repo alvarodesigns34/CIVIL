@@ -13,6 +13,7 @@ import { isLand, wildFood } from '../data/terrain';
 import { adoptPolicy, canAdoptPolicy, changeGovernment, govChangeCost } from './politics';
 import { acceptTrade, acceptAlliance, declareWar, addOpinionMod } from './diplomacy';
 import { queueEvent } from './events';
+import { canSpecialize, specialize, governorCandidates, appointGovernor } from './cities';
 
 const VALUE: Record<YieldId, number> = { food: 1, wood: 0.8, stone: 0.9, metal: 1.2, goods: 1.1, gold: 1, knowledge: 1.3, culture: 1.2, influence: 1.5 };
 
@@ -35,6 +36,27 @@ export function aiYear(state: GameState, civ: Civ, rng: RNG) {
   aiExpand(state, civ, rng);
   aiFortify(state, civ, rng);
   aiDiplomacy(state, civ, rng);
+  aiCities(state, civ, rng);
+}
+
+function aiCities(state: GameState, civ: Civ, rng: RNG) {
+  if (!rng.chance(0.2)) return;
+  const pref: Record<Civ['personality'], string[]> = {
+    scholarly: ['learning', 'granary', 'crafts'], merchant: ['port', 'trade', 'crafts'], pious: ['holy', 'granary', 'crafts'],
+    aggressive: ['fortress', 'mining', 'granary'], expansionist: ['granary', 'mining', 'forest'], peaceful: ['granary', 'holy', 'trade'],
+  };
+  for (const s of civSettlements(state, civ.id)) {
+    if (!s.spec && civ.res.influence >= 40) {
+      for (const id of [...pref[civ.personality], 'granary', 'forest']) {
+        if (!canSpecialize(state, civ, s, id)) { specialize(state, civ, s, id); return; }
+      }
+    }
+    if (!s.capital && !s.governor && civ.res.influence >= 60 && s.pop > 80) {
+      const c = governorCandidates(state, civ, s);
+      appointGovernor(state, civ, s, rng.pick(c));
+      return;
+    }
+  }
 }
 
 function aiSpendGold(state: GameState, civ: Civ, rng: RNG) {

@@ -1,6 +1,7 @@
 import type { Civ, GameState, ModFx, FactionId } from './types';
 import { TECH } from '../data/techs';
 import { GOV, POLICY, TRADITION, TRAIT, WONDER_FX } from '../data/politics';
+import { CULTURE_TRAIT, SPEC } from './cities';
 
 export interface FxSource {
   label: string;
@@ -31,6 +32,13 @@ export function fxSources(state: GameState, civ: Civ): FxSource[] {
   for (const [w, owner] of Object.entries(state.wonders)) {
     if (owner === civ.id && WONDER_FX[w]) out.push({ label: 'Maravilla', fx: WONDER_FX[w] });
   }
+  // Rasgo de la cultura
+  const ct = CULTURE_TRAIT[civ.culture];
+  if (ct) out.push({ label: ct.name, fx: ct.fx });
+  // Especializaciones con efecto general
+  for (const st of state.settlements) if (st.civ === civ.id && st.spec && SPEC[st.spec]?.fx) out.push({ label: `${st.name} (${SPEC[st.spec].name})`, fx: SPEC[st.spec].fx! });
+  // Herramientas: con bienes de sobra, todo el mundo trabaja mejor
+  if (civ.ledger.goodsNeed > 0 && civ.ledger.goodsMet >= 0.95) out.push({ label: 'Herramientas abundantes', fx: { food: 0.05, wood: 0.05, stone: 0.05, metal: 0.05, construction: 0.1 } });
   // Estado de ánimo general
   if (civ.stability >= 75) out.push({ label: 'Edad dorada', fx: { culture: 0.15, knowledge: 0.1, growth: 0.2 } });
   else if (civ.stability < 15) out.push({ label: 'Caos', fx: { food: -0.1, wood: -0.25, stone: -0.25, metal: -0.25, goods: -0.25, gold: -0.25, knowledge: -0.25, culture: -0.25, military: -0.2 } });

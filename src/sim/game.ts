@@ -6,6 +6,7 @@ import { civEra, TECH, ERAS } from '../data/techs';
 import { offerTraditions, advanceColonists } from './actions';
 import { yearlyLeader } from './politics';
 import { yearlyGreatPeople } from './greatPeople';
+import { yearlyCities, LEVELS } from './cities';
 import { yearlyWar, checkElimination } from './war';
 import { yearlyMilitary } from './military';
 import { updateContacts, yearlyDiplomacy } from './diplomacy';
@@ -20,11 +21,12 @@ export interface YearReport {
   techs: { civ: number; id: string }[];
   ambitions: string[];
   traditionReady: boolean;
+  levels: { sid: number; from: number; to: number }[];
 }
 
 export function yearTick(state: GameState): YearReport {
   const rng = new RNG(state.rng);
-  const report: YearReport = { techs: [], ambitions: [], traditionReady: false };
+  const report: YearReport = { techs: [], ambitions: [], traditionReady: false, levels: [] };
   const player = state.civs[state.player];
 
   for (const civ of state.civs) {
@@ -68,6 +70,10 @@ export function yearTick(state: GameState): YearReport {
 
     yearlyLeader(state, civ, rng);
     yearlyGreatPeople(state, civ, rng);
+    for (const ch of yearlyCities(state, civ, rng)) {
+      if (civ.isPlayer) report.levels.push({ sid: ch.s.id, from: ch.from, to: ch.to });
+      if (ch.to > ch.from && ch.to >= 3) state.chronicle.push({ year: state.year, civ: civ.id, kind: 'build', important: civ.isPlayer && ch.to >= 4, text: `${ch.s.name} se convirtió en ${LEVELS[ch.to].name.toLowerCase()}.` });
+    }
     civ.modifiers = civ.modifiers.filter((m) => m.until > state.year);
 
     // Hambruna del jugador

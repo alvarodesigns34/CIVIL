@@ -71,7 +71,7 @@ export const TECH: Record<string, TechDef> = Object.fromEntries(TECHS.map((t) =>
 
 export function techCost(t: TechDef): number {
   const idx = TECHS.filter((x) => x.era === t.era).indexOf(t);
-  return Math.round(24 * Math.pow(2.2, t.era) * (1 + 0.08 * idx));
+  return Math.round(26 * Math.pow(2.45, t.era) * (1 + 0.08 * idx));
 }
 
 export function civEra(techs: string[]): number {

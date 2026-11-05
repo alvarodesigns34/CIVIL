@@ -6,6 +6,7 @@ import { hexDistance, hexesInRange } from '../core/hex';
 import { BUILDING } from '../data/buildings';
 import { makePeace, acceptPeace, addOpinionMod } from './diplomacy';
 import { queueEvent } from './events';
+import { cityDefenseMult } from './cities';
 
 export const FORT_NAME = ['Sin murallas', 'Empalizada', 'Murallas de piedra', 'Castillo'];
 export const FORT_TECH = [null, null, 'masonry', 'castles'];
@@ -17,7 +18,7 @@ export function settlementDefense(state: GameState, civ: Civ, s: Settlement) {
   const g = civ.garrison ?? civ.strength / 6;
   const share = g * (s.capital ? 0.45 : 0.25);
   const militia = s.pop * 0.05;
-  return Math.round((share + militia + 6) * (1 + s.fort * 0.5));
+  return Math.round((share + militia + 6) * (1 + s.fort * 0.5) * cityDefenseMult(s));
 }
 
 function enemiesOf(state: GameState, civ: Civ) {

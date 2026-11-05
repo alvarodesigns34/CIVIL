@@ -450,6 +450,7 @@ export function yearlyMilitary(state: GameState, rng: RNG) {
     if (q.prog >= 0.999) {
       s.queue.shift();
       const u = spawnUnit(state, s.civ, q.type, s.col, s.row, s.id);
+      if (s.spec === 'fortress') u.xp = 10;
       if (state.civs[s.civ].isPlayer) state.chronicle.push({ year: state.year, civ: s.civ, kind: 'war', text: `${s.name} formó un regimiento de ${d.name.toLowerCase()}.` });
       void u;
     }

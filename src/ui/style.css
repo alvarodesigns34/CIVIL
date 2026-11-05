@@ -567,3 +567,25 @@ h1, h2, h3, h4 { font-family: var(--font-display); margin: 0; font-weight: 600; 
 
 .unitcard .unit-row { padding: 5px 8px; }
 .unitcard { max-height: min(70vh, calc(100vh - var(--top-h) - 40px)); }
+
+/* ── Vista de ciudad */
+.tilecard:has(.city-tabs) { width: 420px; }
+.level-strip { display: flex; gap: 3px; margin-bottom: 10px; }
+.level-strip .lv { flex: 1; text-align: center; font-size: 11px; font-weight: 700; padding: 4px 2px; border-radius: 6px; background: var(--paper-sunk); color: var(--ink-faint); letter-spacing: 0.02em; }
+.level-strip .lv.on { background: var(--ink); color: var(--paper); }
+.level-strip .lv.next { outline: 1.5px dashed var(--gold); color: var(--ink-2); }
+.city-tabs { margin-bottom: 10px; }
+.city-tabs button { flex: 1; min-height: 40px; }
+.need { display: flex; gap: 10px; align-items: center; padding: 7px 0; font-size: 14px; border-bottom: 1px dashed var(--hairline); }
+.need .tick { width: 22px; height: 22px; border-radius: 6px; border: 1.5px solid var(--hairline-strong); display: grid; place-items: center; flex: none; }
+.need.ok .tick { background: var(--good); border-color: var(--good); color: #fff; }
+.need .tick svg { width: 14px; height: 14px; }
+.need.ok { color: var(--ink-muted); }
+.spec-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
+.spec { text-align: left; padding: 9px 10px; border-radius: 10px; border: 1px solid var(--hairline-strong); background: var(--paper-raised); display: flex; flex-direction: column; gap: 2px; min-height: 44px; }
+.spec b { font-size: 14px; }
+.spec span { font-size: 12px; color: var(--ink-muted); line-height: 1.3; }
+.spec em { font-size: 11.5px; color: var(--bad); font-style: normal; }
+.spec.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-quiet); }
+.spec.locked { opacity: 0.55; }
+@media (max-width: 760px) { .tilecard:has(.city-tabs) { width: auto; } }

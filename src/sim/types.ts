@@ -101,6 +101,10 @@ export interface Relation {
   warStart: number;
   mods: { id: string; label: string; value: number; until: number }[];
   lastDemand: number;
+  nap?: number; // pacto de no agresión hasta el año
+  openBorders?: boolean;
+  married?: number; // año del matrimonio dinástico
+  vassalOf?: number; // id del señor (en la relación del vasallo hacia su señor)
 }
 
 export interface TimedModifier {

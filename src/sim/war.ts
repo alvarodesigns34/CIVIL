@@ -64,13 +64,24 @@ export function yearlyWar(state: GameState, rng: RNG) {
         const ai = a.isPlayer ? b : a;
         const pl = a.isPlayer ? a : b;
         const rAi = ai.relations[pl.id];
+        if (rAi.warScore > 70 && !state.events.pending.some((p) => p.id === 'sys_vassal_demand') && rng.chance(0.15)) {
+          queueEvent(state, pl, 'sys_vassal_demand', capitalOf(state, pl.id)?.id ?? -1, ai.id);
+          continue;
+        }
         if (!state.events.pending.some((p) => p.id === 'sys_peace_offer') && rng.chance(0.12 + Math.max(0, -rAi.warScore) / 250 + ai.warWeariness / 200)) {
           const tribute = rAi.warScore < -30 ? Math.round(20 + ai.res.gold * 0.3) : rAi.warScore > 40 ? -Math.round(20 + pl.res.gold * 0.25) : 0;
           queueEvent(state, pl, 'sys_peace_offer', capitalOf(state, pl.id)?.id ?? -1, ai.id, { tribute });
         }
         continue;
       }
-      if (rng.chance(acceptPeace(state, a, b, 0) * 0.35)) makePeace(state, a, b, 0);
+      if (rng.chance(acceptPeace(state, a, b, 0) * 0.35)) {
+        makePeace(state, a, b, 0);
+        if (Math.abs(r.warScore) > 70 || Math.abs(a.relations[b.id].warScore) > 70) {
+          const [winner, loser] = r.warScore > 0 ? [a, b] : [b, a];
+          loser.relations[winner.id].vassalOf = winner.id;
+          state.chronicle.push({ year: state.year, civ: -1, kind: 'diplo', text: `Los ${loser.people} se convirtieron en vasallos de los ${winner.people}.` });
+        }
+      }
     }
   }
 }

@@ -10,6 +10,8 @@ import type { Civ, GameState } from './types';
 // se inyecta desde diplomacy.ts para evitar dependencias circulares
 export let declareWarFn: ((s: GameState, a: Civ, b: Civ, reason?: string) => void) | null = null;
 export function setDeclareWar(f: typeof declareWarFn) { declareWarFn = f; }
+export let makePeaceFn: ((s: GameState, a: Civ, b: Civ) => void) | null = null;
+export function setMakePeace(f: typeof makePeaceFn) { makePeaceFn = f; }
 
 const FACTION_TRAIT: Record<FactionId, string[]> = {
   commoners: ['just', 'generous', 'reformer'],
@@ -217,6 +219,30 @@ export const SYSTEM_EVENTS: EventDef[] = [
     choices: [
       { label: 'Sellar la alianza', hint: 'Si atacan a uno, el otro acude.', fx: [{ t: 'custom', label: 'Alianza defensiva', run: (k) => { if (k.other) { k.civ.relations[k.other.id].state = 'alliance'; k.other.relations[k.civ.id].state = 'alliance'; } } }, { t: 'opinion', v: 10, label: 'Aliados' }], log: 'Los {people} y los {otherPeople} sellaron una alianza.' },
       { label: 'Declinar con cortesía', hint: 'Mejor no atarse.', fx: [{ t: 'opinion', v: -5, label: 'Rechazó nuestra alianza' }] },
+    ],
+  },
+  {
+    id: 'sys_vassal_demand', title: 'La rendición', cat: 'war', art: 'crown', weight: 0, chainOnly: true, needsOther: true,
+    text: 'La guerra está perdida. {otherLeader} de {other} ofrece la paz a cambio de que {civ} se convierta en su vasallo: un tributo cada año y obediencia en la guerra.',
+    choices: [
+      { label: 'Aceptar el vasallaje', hint: 'La guerra termina. Pagaréis tributo y no podréis declarar guerras.', fx: [{ t: 'custom', label: 'Paz y vasallaje', run: (k) => { if (k.other) { makePeaceFn?.(k.state, k.civ, k.other); k.civ.relations[k.other.id].vassalOf = k.other.id; } } }, { t: 'legitimacy', v: -15 }, { t: 'faction', f: 'warriors', v: -15 }], log: 'Los {people} se convirtieron en vasallos de los {otherPeople}.' },
+      { label: 'Resistir hasta el final', hint: 'La guerra continúa.', fx: [{ t: 'faction', f: 'warriors', v: 8 }, { t: 'stability', v: -4 }] },
+    ],
+  },
+  {
+    id: 'sys_ai_nap', title: 'Un pacto de paz', cat: 'diplomacy', art: 'envoy', weight: 0, chainOnly: true, needsOther: true,
+    text: '{otherLeader} de {other} propone un pacto de no agresión durante treinta años. Ninguno de los dos pueblos atacará al otro.',
+    choices: [
+      { label: 'Firmar el pacto', hint: 'Treinta años de paz asegurada en esa frontera.', fx: [{ t: 'custom', label: 'Pacto de no agresión', run: (k) => { if (k.other) { k.civ.relations[k.other.id].nap = k.year + 30; k.other.relations[k.civ.id].nap = k.year + 30; } } }, { t: 'opinion', v: 8, label: 'Pacto de no agresión' }] },
+      { label: 'Rechazarlo', hint: 'Mantenemos las manos libres.', fx: [{ t: 'opinion', v: -6, label: 'Rechazó nuestro pacto' }] },
+    ],
+  },
+  {
+    id: 'sys_inheritance', title: 'Una herencia en disputa', cat: 'politics', art: 'crown', weight: 0, chainOnly: true, needsOther: true,
+    text: 'Ha muerto el soberano de {other}. Por los lazos de sangre entre ambas casas, vuestro linaje tiene derecho a reclamar {settlement}. Su corte, débil, quizá no pueda impedirlo.',
+    choices: [
+      { label: 'Reclamar la herencia', hint: '{settlement} pasa a ser vuestra. Ellos no lo olvidarán.', fx: [{ t: 'custom', label: 'La ciudad se une a vuestro reino', run: (k) => { const st = k.s; if (st && k.other && st.civ === k.other.id) { st.civ = k.civ.id; st.capital = false; st.loyalty = 50; for (const t of k.state.tiles) if (t.sid === st.id) t.owner = k.civ.id; } } }, { t: 'opinion', v: -30, label: 'Nos arrebató una herencia' }, { t: 'legitimacy', v: 10 }], log: 'Los {people} heredaron {settlement} por derecho de sangre.' },
+      { label: 'Renunciar con elegancia', hint: 'Su gratitud vale más que una ciudad.', fx: [{ t: 'opinion', v: 25, label: 'Renunció a su herencia' }, { t: 'legitimacy', v: 4 }] },
     ],
   },
   {

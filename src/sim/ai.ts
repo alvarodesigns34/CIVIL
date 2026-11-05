@@ -345,8 +345,18 @@ function aiDiplomacy(state: GameState, civ: Civ, rng: RNG) {
       r.state = o.relations[civ.id].state = 'alliance';
       state.chronicle.push({ year: state.year, civ: -1, kind: 'diplo', text: `Los ${civ.people} y los ${o.people} sellaron una alianza.` });
     }
+    // Pactos entre IA
+    if (!o.isPlayer && r.state === 'peace' && r.opinion > 25 && !(r.nap && r.nap > state.year) && rng.chance(0.03)) {
+      r.nap = o.relations[civ.id].nap = state.year + 30;
+    }
+    if (r.state === 'alliance' && !r.openBorders) r.openBorders = o.relations[civ.id].openBorders = true;
+    // Ofrecer pacto de no agresión o matrimonio al jugador
+    if (o.isPlayer && r.state === 'peace' && r.opinion > 30 && !(r.nap && r.nap > state.year) && rng.chance(0.015) && !state.events.pending.some((p) => p.id === 'sys_ai_nap')) {
+      queueEvent(state, o, 'sys_ai_nap', capitalOf(state, o.id)?.id ?? -1, civ.id);
+    }
     // Guerra
-    if (r.state === 'peace' && r.truceUntil <= state.year) {
+    const isVassal = Object.values(civ.relations).some((x) => x.vassalOf != null);
+    if (r.state === 'peace' && r.truceUntil <= state.year && !(r.nap && r.nap > state.year) && !isVassal) {
       const hostile = civ.personality === 'aggressive' ? 1 : civ.personality === 'expansionist' ? 0.7 : civ.personality === 'peaceful' ? 0.15 : 0.35;
       const ratio = civ.strength / Math.max(1, o.strength);
       const graceOk = state.year > (o.isPlayer ? (state.difficulty === 'easy' ? 120 : 70) : 40);

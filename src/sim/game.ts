@@ -13,6 +13,7 @@ import { yearlyReligion } from './religion';
 import { yearlyMinors } from './minors';
 import { yearlyCrises } from './crises';
 import { checkVictories } from './victory';
+import { yearlyStrategy } from './strategy';
 import { updateContacts, yearlyDiplomacy } from './diplomacy';
 import { aiYear } from './ai';
 import { rollEvents, queueEvent, fire, EVENT } from './events';
@@ -121,6 +122,7 @@ export function yearTick(state: GameState): YearReport {
   yearlyReligion(state, rng);
   yearlyMinors(state, rng);
   yearlyCrises(state, rng);
+  yearlyStrategy(state, rng);
   checkVictories(state);
   updateContacts(state, rng);
   yearlyDiplomacy(state, rng);

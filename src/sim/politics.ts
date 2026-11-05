@@ -6,6 +6,7 @@ import { makeLeader, deathChance } from './leaders';
 import { queueEvent } from './events';
 import { civFx } from './mods';
 import { capitalOf } from './world';
+import { inheritanceCheck } from './strategy';
 
 export function yearlyLeader(state: GameState, civ: Civ, rng: RNG) {
   const L = civ.leader;
@@ -28,6 +29,7 @@ export function killLeader(state: GameState, civ: Civ, rng: RNG, cause: 'natural
   const causeTxt = cause === 'natural' ? (old.age > 55 ? 'de viejo' : 'de enfermedad') : cause === 'battle' ? 'en batalla' : cause === 'coup' ? 'derrocado' : '';
   state.chronicle.push({ year: state.year, civ: civ.id, kind: 'leader', important: civ.isPlayer, text: `${old.title} ${old.name} de los ${civ.people} murió ${causeTxt} a los ${old.age} años, tras ${state.year - old.reignStart} años de gobierno.` });
   civ.flags.lastLeaderDeath = state.year;
+  inheritanceCheck(state, civ, rng);
 
   if (civ.isPlayer && (g.succession === 'election' || g.succession === 'council' || (g.succession === 'hereditary' && (!civ.heir || civ.heir.age < 16 || civ.stability < 35)))) {
     // El jugador decide (evento de sistema). Mientras tanto, un regente provisional.

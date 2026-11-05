@@ -6,7 +6,7 @@ import { hexDistance } from '../core/hex';
 import { civFx } from './mods';
 import { queueEvent } from './events';
 import { GOV } from '../data/politics';
-import { setDeclareWar } from './systemEvents';
+import { setDeclareWar, setMakePeace } from './systemEvents';
 import { civReligion } from './religion';
 
 export function rel(a: Civ, b: Civ) {
@@ -29,6 +29,9 @@ export function opinionTarget(state: GameState, holder: Civ, other: Civ): { v: n
   const fxO = civFx(state, other);
   if (fxO.opinion) parts.push({ label: 'Reputación', v: fxO.opinion });
   if (r.trade) parts.push({ label: 'Socios comerciales', v: 15 });
+  if (r.openBorders) parts.push({ label: 'Fronteras abiertas', v: 5 });
+  if (r.vassalOf === other.id) parts.push({ label: 'Somos sus vasallos', v: -15 });
+  if (other.relations[holder.id]?.vassalOf === holder.id) parts.push({ label: 'Nuestro vasallo', v: 10 });
   if (r.state === 'alliance') parts.push({ label: 'Aliados', v: 25 });
   if (r.state === 'war') parts.push({ label: 'En guerra', v: -50 });
   if (holder.government === other.government) parts.push({ label: 'Gobierno similar', v: 6 });
@@ -113,6 +116,9 @@ export function declareWar(state: GameState, attacker: Civ, defender: Civ, reaso
   const ra = attacker.relations[defender.id];
   const rd = defender.relations[attacker.id];
   const wasAlly = ra.state === 'alliance';
+  // un vasallo que se alza rompe el vasallaje
+  if (ra.vassalOf === defender.id) ra.vassalOf = undefined;
+  if (rd.vassalOf === attacker.id) rd.vassalOf = undefined;
   ra.state = rd.state = 'war';
   ra.trade = rd.trade = false;
   ra.warScore = rd.warScore = 0;
@@ -121,7 +127,8 @@ export function declareWar(state: GameState, attacker: Civ, defender: Civ, reaso
   attacker.flags.lastWar = defender.flags.lastWar = state.year;
   addOpinionMod(state, defender, attacker.id, 'war_decl', 'Nos declaró la guerra', -30, 40);
   // Reputación con terceros si rompió una tregua o una alianza
-  if (wasAlly || ra.truceUntil > state.year) {
+  if (wasAlly || ra.truceUntil > state.year || (ra.nap ?? 0) > state.year) {
+    ra.nap = rd.nap = 0;
     for (const o of state.civs) if (o.alive && o !== attacker && o !== defender) addOpinionMod(state, o, attacker.id, 'backstab', 'Rompe sus juramentos', -20, 50);
     attacker.modifiers.push({ id: 'oathbreaker', name: 'Perjurio', until: state.year + 15, fx: { stability: -8, legitimacy: -1 }, good: false });
   }
@@ -129,7 +136,8 @@ export function declareWar(state: GameState, attacker: Civ, defender: Civ, reaso
   // Aliados del defensor se unen
   for (const o of state.civs) {
     if (!o.alive || o === attacker || o === defender) continue;
-    if (o.relations[defender.id]?.state === 'alliance' && o.relations[attacker.id]?.state !== 'war') {
+    const lordOf = defender.relations[o.id]?.vassalOf === o.id;
+    if ((o.relations[defender.id]?.state === 'alliance' || lordOf) && o.relations[attacker.id]?.state !== 'war') {
       if (o.isPlayer) {
         queueEvent(state, o, 'sys_ally_call', capitalOf(state, o.id)?.id ?? -1, defender.id, { enemy: attacker.id });
         continue;
@@ -234,13 +242,21 @@ export function diploActions(state: GameState, me: Civ, o: Civ): DiploAction[] {
     else out.push({ id: 'canceltrade', label: 'Cancelar ruta comercial', desc: 'Pierdes el oro y los lujos de la ruta.', available: null });
     if (r.state !== 'alliance') out.push({ id: 'alliance', label: 'Proponer alianza', desc: 'Os defenderéis mutuamente.', cost: { influence: 25 }, available: me.res.influence >= 25 ? (r.opinion < 30 ? 'Su opinión es demasiado baja' : null) : 'Influencia insuficiente', accept: acceptAlliance(state, me, o) });
     else out.push({ id: 'breakalliance', label: 'Romper la alianza', desc: 'Se lo tomarán muy mal.', available: null });
+    const hereditary = (c: Civ) => GOV[c.government]?.succession === 'hereditary';
+    if (!(r.nap && r.nap > state.year)) out.push({ id: 'nap', label: 'Pacto de no agresión (30 años)', desc: 'Ninguno atacará al otro. Romperlo es perjurio.', cost: { influence: 10 }, available: me.res.influence >= 10 ? (r.opinion < -10 ? 'Desconfían demasiado' : null) : 'Influencia insuficiente', accept: Math.max(0, Math.min(0.95, 0.45 + r.opinion / 80 + (o.personality === 'peaceful' ? 0.2 : o.personality === 'aggressive' ? -0.25 : 0))) });
+    out.push(r.openBorders
+      ? { id: 'closeborders', label: 'Cerrar las fronteras', desc: 'Sus tropas ya no podrán cruzar tus tierras.', available: null }
+      : { id: 'borders', label: 'Paso libre', desc: 'Las tropas de ambos pueden cruzar el territorio del otro; +10% comercio entre ambos.', cost: { influence: 5 }, available: me.res.influence >= 5 ? null : 'Influencia insuficiente', accept: Math.max(0, Math.min(0.95, 0.4 + r.opinion / 70)) });
+    if (!r.married && hereditary(me) && hereditary(o)) out.push({ id: 'marry', label: 'Matrimonio dinástico', desc: 'Unir las casas reales: amistad duradera, legitimidad y, quizá, una herencia.', cost: { influence: 20, gold: 30 }, available: me.res.influence >= 20 && me.res.gold >= 30 ? (r.opinion < 10 ? 'Su opinión es demasiado baja' : null) : 'Recursos insuficientes', accept: Math.max(0, Math.min(0.9, 0.3 + r.opinion / 60)) });
     const demand = Math.round(20 + o.res.gold * 0.3);
     out.push({ id: 'demand', label: `Exigir tributo (${demand} oro)`, desc: 'Solo funciona si nos temen. Ofende.', cost: { influence: 10 }, available: me.res.influence >= 10 ? null : 'Influencia insuficiente', accept: acceptDemand(state, me, o, demand) });
-    out.push({ id: 'war', label: 'Declarar la guerra', desc: r.truceUntil > state.year ? 'Rompe una tregua: perjurio y pérdida de reputación.' : r.state === 'alliance' ? 'Traicionar a un aliado tiene un alto precio.' : 'Movilizar el ejército contra ellos.', cost: { influence: 15 }, available: me.res.influence >= 15 ? null : 'Influencia insuficiente' });
+    const vassal = Object.values(me.relations).some((x) => x.vassalOf != null);
+    out.push({ id: 'war', label: 'Declarar la guerra', desc: r.truceUntil > state.year ? 'Rompe una tregua: perjurio y pérdida de reputación.' : r.state === 'alliance' ? 'Traicionar a un aliado tiene un alto precio.' : 'Movilizar el ejército contra ellos.', cost: { influence: 15 }, available: vassal ? 'Un vasallo no puede declarar guerras' : me.res.influence >= 15 ? null : 'Influencia insuficiente' });
   } else {
     out.push({ id: 'peace', label: 'Proponer paz blanca', desc: 'Volver a las fronteras actuales.', cost: { influence: 5 }, available: me.res.influence >= 5 ? null : 'Influencia insuficiente', accept: acceptPeace(state, me, o, 0) });
     const pay = Math.round(30 + me.res.gold * 0.25);
     out.push({ id: 'peacepay', label: `Comprar la paz (${pay} oro)`, desc: 'Pagar para que se retiren.', cost: { gold: pay, influence: 5 }, available: me.res.gold >= pay && me.res.influence >= 5 ? null : 'Recursos insuficientes', accept: acceptPeace(state, me, o, pay) });
+    if (r.warScore > 60) out.push({ id: 'vassal', label: 'Exigir vasallaje', desc: 'Que se rindan y nos paguen tributo cada año. No podrán hacer la guerra por su cuenta.', cost: { influence: 10 }, available: me.res.influence >= 10 ? null : 'Influencia insuficiente', accept: Math.max(0, Math.min(0.9, (r.warScore - 50) / 60 + o.warWeariness / 80 - (o.personality === 'aggressive' ? 0.15 : 0))) });
     if (r.warScore > 30) {
       const take = Math.round(30 + o.res.gold * 0.5);
       out.push({ id: 'peacetribute', label: `Exigir paz con tributo (${take} oro)`, desc: 'Vamos ganando: que paguen.', cost: { influence: 5 }, available: me.res.influence >= 5 ? null : 'Influencia insuficiente', accept: Math.max(0, acceptPeace(state, me, o, 0) - 0.15 + r.warScore / 200) });
@@ -299,6 +315,42 @@ export function doDiplo(state: GameState, me: Civ, o: Civ, id: string, rng: RNG)
       }
       return { ok: false, msg: `${o.leader.name} se ríe de nuestra exigencia.` };
     }
+    case 'nap':
+      if (rng.chance(a.accept!)) {
+        r.nap = ro.nap = state.year + 30;
+        addOpinionMod(state, o, me.id, 'nap', 'Pacto de no agresión', 8, 30);
+        state.chronicle.push({ year: state.year, civ: me.id, kind: 'diplo', text: `Los ${me.people} y los ${o.people} firmaron un pacto de no agresión.` });
+        return { ok: true, msg: 'Pacto firmado: treinta años de paz asegurada.' };
+      }
+      return { ok: false, msg: `${o.leader.name} no se fía de vosotros.` };
+    case 'borders':
+      if (rng.chance(a.accept!)) {
+        r.openBorders = ro.openBorders = true;
+        return { ok: true, msg: 'Fronteras abiertas entre ambos pueblos.' };
+      }
+      return { ok: false, msg: `${o.leader.name} prefiere mantener sus fronteras cerradas.` };
+    case 'closeborders':
+      r.openBorders = ro.openBorders = false;
+      addOpinionMod(state, o, me.id, 'closed', 'Nos cerró sus fronteras', -8, 20);
+      return { ok: true, msg: 'Fronteras cerradas.' };
+    case 'marry':
+      if (rng.chance(a.accept!)) {
+        r.married = ro.married = state.year;
+        addOpinionMod(state, o, me.id, 'marriage', 'Lazos de sangre', 25, 80);
+        addOpinionMod(state, me, o.id, 'marriage', 'Lazos de sangre', 25, 80);
+        me.leader.legitimacy = Math.min(100, me.leader.legitimacy + 10);
+        state.chronicle.push({ year: state.year, civ: me.id, kind: 'diplo', important: true, text: `Las casas reales de los ${me.people} y los ${o.people} se unieron en matrimonio.` });
+        return { ok: true, msg: '¡Boda real! Las dos casas quedan unidas.' };
+      }
+      return { ok: false, msg: `${o.leader.name} rechaza el enlace.` };
+    case 'vassal':
+      if (rng.chance(a.accept!)) {
+        makePeace(state, me, o, 0);
+        ro.vassalOf = me.id;
+        state.chronicle.push({ year: state.year, civ: -1, kind: 'diplo', important: true, text: `Los ${o.people} se convirtieron en vasallos de los ${me.people}.` });
+        return { ok: true, msg: `${o.name} se rinde y se convierte en vasallo vuestro.` };
+      }
+      return { ok: false, msg: `${o.leader.name} prefiere morir de pie.` };
     case 'war':
       declareWar(state, me, o);
       return { ok: true, msg: `Guerra contra ${o.name}.` };
@@ -328,3 +380,4 @@ export function govName(c: Civ) {
 }
 
 setDeclareWar(declareWar);
+setMakePeace((s, a, b) => makePeace(s, a, b, 0));

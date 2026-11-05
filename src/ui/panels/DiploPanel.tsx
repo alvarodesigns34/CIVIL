@@ -8,6 +8,7 @@ import { civEra, ERAS } from '../../data/techs';
 import { GOV, TRAIT } from '../../data/politics';
 import { fmt, sgn, cls, attitude, PERSONALITY_NAME } from '../util';
 import { PanelShell } from './PanelShell';
+import { goalOf } from '../../sim/strategy';
 import { MINOR_INFO, minorStanding, FRIEND, ALLY } from '../../sim/minors';
 
 export function DiploPanel() {
@@ -45,6 +46,11 @@ export function DiploPanel() {
                       <span class={cls('pill', r.state === 'war' ? 'bad' : r.state === 'alliance' ? 'good' : '')}>{r.state === 'war' ? 'En guerra' : r.state === 'alliance' ? 'Aliados' : 'Paz'}</span>
                       <span class={cls('pill', att.c)}>{att.t} ({sgn(theirs.opinion)})</span>
                       {r.trade && <span class="pill good">Comercio</span>}
+                      {(r.nap ?? 0) > s.year && <span class="pill good">No agresión hasta {r.nap! - s.year} años</span>}
+                      {r.openBorders && <span class="pill">Paso libre</span>}
+                      {r.married && <span class="pill accent">Casas unidas</span>}
+                      {theirs.vassalOf === p.id && <span class="pill good">Vasallo nuestro</span>}
+                      {r.vassalOf === o.id && <span class="pill bad">Somos sus vasallos</span>}
                       {r.state === 'war' && <span class={cls('pill', r.warScore >= 0 ? 'good' : 'bad')}>Guerra {sgn(r.warScore)}</span>}
                     </>
                   )}
@@ -61,6 +67,7 @@ export function DiploPanel() {
                     <div style={{ fontWeight: 700 }}>{o.leader.name}</div>
                     <div class="muted" style={{ fontSize: 13 }}>{o.leader.age} años · {o.leader.traits.map((t) => TRAIT[t]?.name).join(', ')}</div>
                     <div class="muted" style={{ fontSize: 13 }}>Carácter: {PERSONALITY_NAME[o.personality]} · {GOV[o.government].name}</div>
+                    {goalOf(o) && (theirs.opinion > 15 || r.trade || r.state === 'alliance') && <div style={{ fontSize: 13, marginTop: 2 }}><b>Ambición:</b> {goalOf(o)}</div>}
                   </div>
                 </div>
                 <div class="grid2" style={{ marginTop: 10 }}>

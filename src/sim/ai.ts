@@ -312,6 +312,10 @@ function aiDiplomacy(state: GameState, civ: Civ, rng: RNG) {
         r.trade = o.relations[civ.id].trade = true;
       }
     }
+    // Propuesta de alianza al jugador
+    if (o.isPlayer && r.state === 'peace' && r.opinion > 55 && rng.chance(0.02) && !state.events.pending.some((p) => p.id === 'sys_ai_alliance')) {
+      queueEvent(state, o, 'sys_ai_alliance', capitalOf(state, o.id)?.id ?? -1, civ.id);
+    }
     // Alianzas entre IA
     if (!o.isPlayer && r.state === 'peace' && r.opinion > 55 && rng.chance(0.03) && rng.chance(acceptAlliance(state, civ, o))) {
       r.state = o.relations[civ.id].state = 'alliance';

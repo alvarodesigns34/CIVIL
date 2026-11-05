@@ -12,7 +12,7 @@ import type { ResId } from '../sim/types';
 
 // Objetivo actual del Consejo de ancianos
 export function ObjectiveCard() {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(window.innerWidth > 760);
   const p = ctrl.player;
   const step = currentTutorial(p);
   if (!step) return null;
@@ -21,7 +21,7 @@ export function ObjectiveCard() {
   if (!open) {
     return (
       <button class="objective mini" onClick={() => setOpen(true)} aria-label="Ver objetivo">
-        <Icon name="star" /> <span>{idx + 1}/{TUTORIAL.length}</span>
+        <Icon name="star" /> <span class="num">{idx + 1}/{TUTORIAL.length}</span> <span class="obj-mini-t">{step.title}</span>{max > 1 && <span class="num" style={{ color: 'var(--night-muted)' }}>{Math.min(v, max)}/{max}</span>}
       </button>
     );
   }

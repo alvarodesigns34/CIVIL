@@ -9,6 +9,8 @@ npm run build    # compilación de producción en dist/
 npm run sim -- <semilla> <años>   # simulación sin interfaz para equilibrar
 ```
 
+**Jugar online:** cada push a `main` (o a esta rama) se publica en GitHub Pages mediante GitHub Actions (`.github/workflows/deploy.yml`). Requiere activar Pages una vez en *Settings → Pages → Source: GitHub Actions*.
+
 Funciona en escritorio (ratón y teclado), iPad y móvil (táctil: arrastrar, pellizcar y doble toque para confirmar construcciones).
 
 ## Bucle de juego
@@ -29,6 +31,11 @@ Cada año (de 0,35 a 3,2 segundos según la velocidad) cada pueblo:
 - **Diplomacia:** contacto, opinión con sus motivos detallados, regalos, rutas comerciales (dan oro y comparten lujos), alianzas, tributos y tratados de paz.
 - **Guerra:** los ejércitos marchan sobre el mapa, saquean, asedian y conquistan ciudades. La fuerza depende de los soldados, del armamento (el bronce y el hierro exigen cobre y hierro reales), de las murallas y de la estabilidad.
 - **Eventos:** 57 eventos narrativos ligados al estado del juego, con 13 cadenas de consecuencias a largo plazo, y 11 eventos de sistema (mito fundacional, sucesiones, primer contacto, paz, exigencias, revoluciones, eras y hambrunas). Cada opción muestra antes de elegir sus efectos y sus riesgos.
+- **Personajes ilustres:** sabios, artistas, mercaderes, caudillos, profetas e ingenieros nacen de lo que tu pueblo cultiva, y tú decides cómo aprovechar su talento.
+- **Decretos:** festivales, reparto de grano, ofrendas, obras públicas, tributos, censos, levas, amnistías y desfiles triunfales, con coste y recarga.
+- **Campañas:** en guerra eliges qué ciudad conquistar o saquear, con pronóstico de la batalla. Los aliados piden ayuda y los pueblos amistosos proponen alianzas.
+- **Consejo de ancianos:** objetivos guiados con recompensas que enseñan a jugar.
+- **Sonido:** música generativa distinta en cada era (más tensa en guerra), ambiente que depende de lo que miras (agua, viento, aves, ciudad, invierno) y efectos para cada acción.
 - **Objetivos:** 18 ambiciones y una puntuación de **legado**. La partida termina cuando alguien construye la máquina de vapor, cuando solo queda un pueblo o tras 900 años.
 - **IA:** cada rival tiene un carácter (belicoso, mercantil, devoto, expansionista, erudito o pacífico) que guía su investigación, sus leyes, sus construcciones, su expansión y su diplomacia.
 

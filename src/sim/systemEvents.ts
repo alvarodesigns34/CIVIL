@@ -6,6 +6,10 @@ import { makeLeader } from './leaders';
 import { FACTIONS, GOV, TRAIT } from '../data/politics';
 import { factionUnlocked } from './economy';
 import { ERAS } from '../data/techs';
+import type { Civ, GameState } from './types';
+// se inyecta desde diplomacy.ts para evitar dependencias circulares
+export let declareWarFn: ((s: GameState, a: Civ, b: Civ, reason?: string) => void) | null = null;
+export function setDeclareWar(f: typeof declareWarFn) { declareWarFn = f; }
 
 const FACTION_TRAIT: Record<FactionId, string[]> = {
   commoners: ['just', 'generous', 'reformer'],
@@ -182,6 +186,37 @@ export const SYSTEM_EVENTS: EventDef[] = [
         log: 'Se abrió una ruta comercial entre los {people} y los {otherPeople}.',
       },
       { label: 'Rehusar', hint: 'No nos fiamos de ellos.', fx: [{ t: 'opinion', v: -8, label: 'Rechazó comerciar' }] },
+    ],
+  },
+  {
+    id: 'sys_ally_call', title: 'Un aliado pide ayuda', cat: 'diplomacy', art: 'army', weight: 0, chainOnly: true, needsOther: true,
+    text: '',
+    choices: [],
+    build: (c) => {
+      const enemy = c.state.civs[Number(c.data.enemy)];
+      return {
+        text: `Un jinete agotado llega desde ${c.other?.name}: los ${enemy?.people} les han declarado la guerra. ${c.other?.leader.name} os recuerda vuestro juramento de alianza y pide que marchéis a su lado.`,
+        choices: [
+          {
+            label: `Honrar la alianza: guerra contra ${enemy?.name}`, hint: 'Los juramentos se cumplen. Tu aliado no lo olvidará.',
+            fx: [{ t: 'custom', label: `Entras en guerra con ${enemy?.name}`, run: (k) => { if (enemy?.alive) declareWarFn?.(k.state, k.civ, enemy, 'alianza'); } }, { t: 'opinion', v: 25, label: 'Acudió en nuestra ayuda' }, { t: 'faction', f: 'warriors', v: 8 }],
+            log: 'Los {people} honraron su alianza con los {otherPeople}.',
+          },
+          {
+            label: 'Mantenerse al margen', hint: 'Evitas la guerra, pero la alianza se rompe y tu palabra vale menos.',
+            fx: [{ t: 'custom', label: 'La alianza se rompe', run: (k) => { if (k.other) { k.civ.relations[k.other.id].state = 'peace'; k.other.relations[k.civ.id].state = 'peace'; } } }, { t: 'opinion', v: -40, label: 'Nos abandonó' }, { t: 'opinion', v: -8, who: 'all', label: 'Rompe sus juramentos' }, { t: 'legitimacy', v: -8 }],
+            log: 'Los {people} abandonaron a sus aliados {otherPeople}.',
+          },
+        ],
+      };
+    },
+  },
+  {
+    id: 'sys_ai_alliance', title: 'Propuesta de alianza', cat: 'diplomacy', art: 'envoy', weight: 0, chainOnly: true, needsOther: true,
+    text: '{otherLeader} de {other} propone una alianza: defenderse mutuamente de cualquier agresor. Juntos seríais temibles; pero una alianza también arrastra a guerras ajenas.',
+    choices: [
+      { label: 'Sellar la alianza', hint: 'Si atacan a uno, el otro acude.', fx: [{ t: 'custom', label: 'Alianza defensiva', run: (k) => { if (k.other) { k.civ.relations[k.other.id].state = 'alliance'; k.other.relations[k.civ.id].state = 'alliance'; } } }, { t: 'opinion', v: 10, label: 'Aliados' }], log: 'Los {people} y los {otherPeople} sellaron una alianza.' },
+      { label: 'Declinar con cortesía', hint: 'Mejor no atarse.', fx: [{ t: 'opinion', v: -5, label: 'Rechazó nuestra alianza' }] },
     ],
   },
   {

@@ -519,3 +519,21 @@ h1, h2, h3, h4 { font-family: var(--font-display); margin: 0; font-weight: 600; 
   .panel.full { left: 0; }
   .tech-top { grid-template-columns: 1fr; }
 }
+
+.medallion {
+  width: 42px; height: 42px; border-radius: 50%; flex: none; display: grid; place-items: center;
+  background: radial-gradient(circle at 35% 30%, #4a3a2a, #211a14); color: #e2c044;
+  box-shadow: 0 0 0 2px var(--paper), 0 0 0 3px rgba(184, 138, 34, 0.6), 0 3px 8px rgba(0,0,0,.25); margin-right: 2px;
+}
+.medallion svg { width: 21px; height: 21px; }
+.panel-head { align-items: center; }
+.leader-btn { border-radius: 10px; padding: 0; line-height: 0; flex: none; }
+.leader-btn .portrait { border-radius: 9px; border-color: rgba(226, 192, 68, 0.5); }
+.leader-btn:hover .portrait { border-color: #e2c044; }
+@media (max-width: 760px) {
+  .medallion { width: 34px; height: 34px; }
+  .medallion svg { width: 18px; height: 18px; }
+  .leader-btn .portrait { width: 30px !important; height: 30px !important; }
+}
+
+.obj-mini-t { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60vw; }

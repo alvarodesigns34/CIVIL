@@ -6,6 +6,7 @@ import { hexDistance } from '../core/hex';
 import { civFx } from './mods';
 import { queueEvent } from './events';
 import { GOV } from '../data/politics';
+import { setDeclareWar } from './systemEvents';
 
 export function rel(a: Civ, b: Civ) {
   return a.relations[b.id];
@@ -126,6 +127,10 @@ export function declareWar(state: GameState, attacker: Civ, defender: Civ, reaso
   for (const o of state.civs) {
     if (!o.alive || o === attacker || o === defender) continue;
     if (o.relations[defender.id]?.state === 'alliance' && o.relations[attacker.id]?.state !== 'war') {
+      if (o.isPlayer) {
+        queueEvent(state, o, 'sys_ally_call', capitalOf(state, o.id)?.id ?? -1, defender.id, { enemy: attacker.id });
+        continue;
+      }
       const ro = o.relations[attacker.id];
       const ra2 = attacker.relations[o.id];
       ro.state = ra2.state = 'war';
@@ -306,3 +311,5 @@ export function doDiplo(state: GameState, me: Civ, o: Civ, id: string, rng: RNG)
 export function govName(c: Civ) {
   return GOV[c.government]?.name ?? '';
 }
+
+setDeclareWar(declareWar);

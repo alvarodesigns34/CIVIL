@@ -5,13 +5,16 @@ import { sfx } from '../../game/audio';
 import { Icon } from '../Icon';
 import { cls } from '../util';
 
+const ICONS: Record<string, string> = { Construir: 'build', Territorio: 'cities', Saber: 'tech', Gobierno: 'gov', Pueblos: 'diplo', Crónica: 'chronicle', Menú: 'menu' };
+
 export function PanelShell({ title, sub, children, tabs, tab, onTab, wide, full }: {
   title: string; sub?: string; children: ComponentChildren; tabs?: { id: string; label: string }[]; tab?: string; onTab?: (t: string) => void; wide?: boolean; full?: boolean;
 }) {
   return (
     <section class={cls('panel', wide && 'wide', full && 'full')} role="dialog" aria-label={title}>
       <div class="panel-head">
-        <div>
+        {ICONS[title] && <span class="medallion"><Icon name={ICONS[title]} /></span>}
+        <div style={{ flex: 1, minWidth: 0 }}>
           <h2>{title}</h2>
           {sub && <p>{sub}</p>}
         </div>

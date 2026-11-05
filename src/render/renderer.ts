@@ -44,6 +44,7 @@ export class Renderer {
   time = 0;
   smoke: { x: number; y: number; life: number; vx: number }[] = [];
   playerId = 0;
+  vignette: HTMLCanvasElement | null = null;
   sparks: { x: number; y: number; vx: number; vy: number; life: number; c: string; r: number }[] = [];
   rings: { x: number; y: number; life: number; big: boolean }[] = [];
   snow: { x: number; y: number; s: number }[] = [];
@@ -833,6 +834,20 @@ export class Renderer {
     const c = cols[i].map((v, n) => v + (cols[j][n] - v) * k);
     g.fillStyle = `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${c[3]})`;
     g.fillRect(0, 0, this.cam.vw, this.cam.vh);
+    // viñeta de grabado: bordes del mapa algo más oscuros
+    const W = this.cam.vw, H = this.cam.vh;
+    if (!this.vignette || this.vignette.width !== Math.round(W) || this.vignette.height !== Math.round(H)) {
+      const v = document.createElement('canvas');
+      v.width = Math.round(W); v.height = Math.round(H);
+      const vg = v.getContext('2d')!;
+      const grd = vg.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.42, W / 2, H / 2, Math.max(W, H) * 0.78);
+      grd.addColorStop(0, 'rgba(40,25,10,0)');
+      grd.addColorStop(1, 'rgba(40,25,10,0.28)');
+      vg.fillStyle = grd;
+      vg.fillRect(0, 0, W, H);
+      this.vignette = v;
+    }
+    g.drawImage(this.vignette, 0, 0, W, H);
   }
 
   drawLabels(g: CanvasRenderingContext2D, ex: Uint8Array, ov: Overlay) {

@@ -6,7 +6,10 @@ import { FACTIONS, GOVERNMENTS, GOV, POLICIES, POLICY, POLICY_GROUPS, TRAIT, TRA
 import { TECH } from '../../data/techs';
 import { factionUnlocked, traditionCost } from '../../sim/economy';
 import { canAdoptPolicy, govChangeCost } from '../../sim/politics';
-import { describeFxObj } from '../../sim/events';
+import { describeFxObj, describeEffects, makeCtx } from '../../sim/events';
+import { DECREES } from '../../data/decrees';
+import { capitalOf } from '../../sim/world';
+import { RES_COLOR } from '../Icon';
 import { fmt, sgn, cls } from '../util';
 import { FACTION_IDS } from '../../sim/types';
 import { PanelShell } from './PanelShell';
@@ -16,13 +19,14 @@ export function GovPanel() {
   const p = ctrl.player;
   const [tab, setTab] = useState(p.traditionOffer ? 'traditions' : 'leader');
   return (
-    <PanelShell title="Gobierno" sub={`${GOV[p.government].name} · estabilidad ${Math.round(p.stability)}`} tabs={[{ id: 'leader', label: 'Líder' }, { id: 'factions', label: 'Facciones' }, { id: 'laws', label: 'Leyes' }, { id: 'regime', label: 'Régimen' }, { id: 'traditions', label: p.traditionOffer ? 'Tradiciones •' : 'Tradiciones' }, { id: 'greats', label: 'Ilustres' }]} tab={tab} onTab={setTab}>
+    <PanelShell title="Gobierno" sub={`${GOV[p.government].name} · estabilidad ${Math.round(p.stability)}`} tabs={[{ id: 'leader', label: 'Líder' }, { id: 'decrees', label: 'Decretos' }, { id: 'factions', label: 'Facciones' }, { id: 'laws', label: 'Leyes' }, { id: 'regime', label: 'Régimen' }, { id: 'traditions', label: p.traditionOffer ? 'Tradiciones •' : 'Tradiciones' }, { id: 'greats', label: 'Ilustres' }]} tab={tab} onTab={setTab}>
       {tab === 'leader' && <Leader />}
       {tab === 'factions' && <Factions />}
       {tab === 'laws' && <Laws />}
       {tab === 'regime' && <Regime />}
       {tab === 'traditions' && <Traditions />}
       {tab === 'greats' && <Greats />}
+      {tab === 'decrees' && <Decrees />}
     </PanelShell>
   );
 }
@@ -225,6 +229,38 @@ function Traditions() {
           <div class="kv" key={id}><span class="k"><b>{TRADITION[id].name}</b></span><span class="v" style={{ fontWeight: 500, fontSize: 13 }}>{TRADITION[id].desc}</span></div>
         ))}
       </div>
+    </>
+  );
+}
+
+function Decrees() {
+  const p = ctrl.player;
+  const ctx = makeCtx(ctrl.state, p, capitalOf(ctrl.state, p.id)?.id ?? -1, -1);
+  return (
+    <>
+      <div class="muted" style={{ fontSize: 13.5, marginBottom: 10 }}>Órdenes directas de {p.leader.title.toLowerCase()} {p.leader.name}. Cada decreto tiene un precio y no puede repetirse enseguida.</div>
+      {DECREES.map((d) => {
+        const st = ctrl.decreeStatus(d.id);
+        const locked = d.tech && !p.techs.includes(d.tech);
+        const lines = describeEffects(d.fx(ctx), ctx);
+        return (
+          <div key={d.id} class={cls('card', locked && 'locked')}>
+            <div class="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <h4>{d.name}</h4>
+                <div class="desc">{d.desc}</div>
+              </div>
+              <button class="btn small accent" disabled={!st.ok} onClick={() => ctrl.decree(d.id)}>Decretar</button>
+            </div>
+            <div class="pills">
+              {Object.entries(st.cost).map(([r, v]) => <span key={r} class={cls('pill', p.res[r as keyof typeof p.res] < (v as number) && 'bad')}><Icon name={r} style={{ color: RES_COLOR[r] }} />{fmt(v as number)}</span>)}
+              <span class="pill"><Icon name="hourglass" />cada {d.cooldown} años</span>
+              {locked ? <span class="pill accent">Requiere {TECH[d.tech!].name}</span> : !st.ok && <span class="pill bad">{st.why}</span>}
+            </div>
+            <div class="fx">{lines.map((l, i) => <span key={i} class={l.tone !== 'neutral' ? l.tone : ''}>{l.text}</span>)}</div>
+          </div>
+        );
+      })}
     </>
   );
 }

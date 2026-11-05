@@ -10,7 +10,7 @@ import { TECH } from '../data/techs';
 import { canBuildAt, startBuild, cancelBuild, togglePause, sendColonists, canColonize, sendScout, fortify, hurry, marketTrade } from '../sim/actions';
 import { buildingYield, placeCtx, progressResearch, simulateEconomy } from '../sim/economy';
 import { encodeExplored, getExplored, settlementById, tileAt, capitalOf, reveal } from '../sim/world';
-import { queueEvent, EVENT, makeCtx, getChoices, applyChoice, choiceAvailable } from '../sim/events';
+import { applyEffects, queueEvent, EVENT, makeCtx, getChoices, applyChoice, choiceAvailable } from '../sim/events';
 import { adoptPolicy, canAdoptPolicy, changeGovernment, govChangeCost, revokePolicy } from '../sim/politics';
 import { doDiplo } from '../sim/diplomacy';
 import { advanceScouts } from '../sim/actions';
@@ -18,6 +18,7 @@ import { AMBITIONS } from '../data/ambitions';
 import { sfx, startAudio, audioFrame, applyAudioSettings, setMusicContext, setAmbience } from './audio';
 import { builtLog } from '../sim/economy';
 import { checkTutorial } from '../sim/tutorial';
+import { DECREE } from '../data/decrees';
 import { RES_NAME } from '../sim/names';
 import { civEra } from '../data/techs';
 import { hexToPixel } from '../core/hex';
@@ -680,6 +681,34 @@ export class Controller {
     else sfx('coin', this.settings);
     notify();
   }
+  decreeStatus(id: string): { ok: boolean; why?: string; cost: Partial<Record<ResId, number>> } {
+    const d = DECREE[id];
+    const p = this.player;
+    const ctx = makeCtx(this.state, p, capitalOf(this.state, p.id)?.id ?? -1, -1);
+    const cost = Object.fromEntries(Object.entries(d.cost(ctx)).filter(([, v]) => v)) as Partial<Record<ResId, number>>;
+    if (d.tech && !p.techs.includes(d.tech)) return { ok: false, why: 'Requiere tecnología', cost };
+    const last = p.flags[`dec_${id}`];
+    if (last != null && this.state.year - last < d.cooldown) return { ok: false, why: `Disponible en ${d.cooldown - (this.state.year - last)} años`, cost };
+    if (d.req && !d.req(ctx)) return { ok: false, why: d.reqText ?? 'No disponible', cost };
+    for (const [k, v] of Object.entries(cost)) if (p.res[k as ResId] < (v as number)) return { ok: false, why: 'Recursos insuficientes', cost };
+    return { ok: true, cost };
+  }
+  decree(id: string) {
+    const st = this.decreeStatus(id);
+    if (!st.ok) return this.toast('No se puede decretar', st.why, 'bad');
+    const p = this.player;
+    const d = DECREE[id];
+    for (const [k, v] of Object.entries(st.cost)) p.res[k as ResId] -= v as number;
+    const ctx = makeCtx(this.state, p, capitalOf(this.state, p.id)?.id ?? -1, -1);
+    const out: string[] = [];
+    applyEffects(this.state, ctx, d.fx(ctx), new RNG(this.state.rng ^ 0x77), out);
+    p.flags[`dec_${id}`] = this.state.year;
+    this.state.chronicle.push({ year: this.state.year, civ: p.id, kind: 'politics', text: `${p.leader.title} ${p.leader.name} decretó: ${d.name.toLowerCase()}.` });
+    this.toast(`Decreto: ${d.name}`, undefined, 'good');
+    sfx('good', this.settings);
+    notify();
+  }
+
   setTarget(sid: number, raid: boolean) {
     const p = this.player;
     if (p.flags.target === sid && !!p.flags.targetRaid === raid) {

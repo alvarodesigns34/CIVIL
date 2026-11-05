@@ -3,7 +3,7 @@ import { ctrl } from '../game/controller';
 import { notify } from '../game/store';
 import { sfx } from '../game/audio';
 import { Icon, RES_COLOR } from './Icon';
-import { Emblem } from './Emblem';
+import { Emblem, Portrait } from './Emblem';
 import { fmt, sgn, cls } from './util';
 import type { ResId, YieldId } from '../sim/types';
 import { RES_TITLE, RES_DESC, calendarYear } from '../sim/names';
@@ -38,6 +38,9 @@ export function TopBar() {
       <header class="topbar">
         <div class="identity">
           <Emblem index={p.emblem} color={p.color} color2={p.color2} size={30} />
+          <button class="leader-btn" onClick={() => { ctrl.panel = 'gov'; sfx('open', ctrl.settings); notify(); }} title={`${p.leader.title} ${p.leader.name}`} aria-label="Ver al líder">
+            <Portrait leader={p.leader} color={p.color} size={36} />
+          </button>
           <div>
             <div class="name">{p.name}</div>
             <div class="sub">{GOV[p.government].name} · {p.leader.title} {p.leader.name}</div>

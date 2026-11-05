@@ -23,6 +23,7 @@ export interface Overlay {
   mode: 'select' | 'build' | 'colony' | 'scout';
   selectedUnits?: number[];
   lens?: 'none' | 'religion' | 'resources' | 'military' | 'mood';
+  dayNight?: boolean;
   yearFrac: number; // 0..1 dentro del año actual
   reducedMotion: boolean;
 }
@@ -211,7 +212,14 @@ export class Renderer {
           const tier = settlementTier(st.pop);
           const key = `set:${tier}:${st.fort}:${civ.color}:${st.capital ? 1 : 0}`;
           const spr = getSprite(key, sprScale, (gg) => drawSettlement(gg, tier, st.fort, civ.color, civ.color2, st.capital, 0));
-          blitSprite(g, spr, px, py, sprScale);
+          const big = tier >= 4 ? 1.4 : tier === 3 ? 1.2 : 1;
+          if (big > 1) {
+            g.save();
+            g.translate(px, py);
+            g.scale(big, big);
+            blitSprite(g, spr, 0, 0, sprScale);
+            g.restore();
+          } else blitSprite(g, spr, px, py, sprScale);
           if (!ov.reducedMotion && Math.random() < dt * 2.5 && z > 0.7) this.smoke.push({ x: px + (Math.random() - 0.5) * 20, y: py - 10, life: 1, vx: (Math.random() - 0.3) * 6 });
           continue;
         }
@@ -273,6 +281,7 @@ export class Renderer {
     if (!ov.reducedMotion) this.drawClouds(g, dt);
     g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.drawSeason(g, ov.yearFrac);
+    if (ov.dayNight !== false && !ov.reducedMotion) this.drawNight(g, ex);
     if (!ov.reducedMotion) this.drawWeather(g, dt, ov.yearFrac);
 
     // Etiquetas en coordenadas de pantalla
@@ -1069,6 +1078,51 @@ export class Renderer {
       }
       g.stroke();
     }
+  }
+
+  // Ciclo lento de luz (unos 4 minutos): atardecer, noche suave y amanecer
+  nightAmount() {
+    const ph = (this.time / 240) % 1;
+    const v = Math.sin(ph * Math.PI * 2);
+    return v > 0 ? Math.pow(v, 1.6) * 0.38 : 0;
+  }
+  drawNight(g: CanvasRenderingContext2D, ex: Uint8Array) {
+    const n = this.nightAmount();
+    if (n < 0.01) return;
+    const W = this.cam.vw, H = this.cam.vh;
+    const ph = (this.time / 240) % 1;
+    // tono cálido al atardecer, azul profundo de noche
+    const dusk = ph < 0.12 || ph > 0.38 ? 1 : 0;
+    g.fillStyle = dusk ? `rgba(120,60,40,${n * 0.5})` : `rgba(18,24,58,${n})`;
+    g.fillRect(0, 0, W, H);
+    // luces de las ciudades
+    const s = this.state;
+    g.save();
+    g.globalCompositeOperation = 'lighter';
+    for (const st of s.settlements) {
+      if (!ex[st.row * s.width + st.col]) continue;
+      const [px, py] = hexToPixel(st.col, st.row);
+      const [x, y] = this.cam.toScreen(px, py);
+      if (x < -120 || y < -120 || x > W + 120 || y > H + 120) continue;
+      const rad = (22 + Math.sqrt(st.pop) * 2.4) * this.cam.zoom;
+      const grd = g.createRadialGradient(x, y, 1, x, y, rad);
+      const flick = 0.85 + Math.sin(this.time * 3 + st.id) * 0.08;
+      grd.addColorStop(0, `rgba(255,190,100,${n * 0.9 * flick})`);
+      grd.addColorStop(0.4, `rgba(255,150,60,${n * 0.35 * flick})`);
+      grd.addColorStop(1, 'rgba(255,140,60,0)');
+      g.fillStyle = grd;
+      g.beginPath(); g.arc(x, y, rad, 0, Math.PI * 2); g.fill();
+      // ventanas
+      if (this.cam.zoom > 0.8) {
+        g.fillStyle = `rgba(255,220,140,${n * 1.6})`;
+        const k = Math.min(14, Math.round(st.pop / 30));
+        for (let i = 0; i < k; i++) {
+          const wx = x + (hash2(st.id, i, 1) - 0.5) * 40 * this.cam.zoom, wy = y + (hash2(st.id, i, 2) - 0.6) * 26 * this.cam.zoom;
+          g.fillRect(wx, wy, 1.6 * this.cam.zoom, 1.6 * this.cam.zoom);
+        }
+      }
+    }
+    g.restore();
   }
 
   drawSeason(g: CanvasRenderingContext2D, f: number) {

@@ -72,28 +72,76 @@ export function applyAudioSettings(s: Settings) {
 
 // ───────────────────────── Instrumentos
 function pluck(freq: number, t: number, dur: number, vol: number, bus: AudioNode, bright = 0.5) {
+  // cuerda pulsada: varios armónicos que se apagan antes cuanto más agudos
   const a = ctx!;
-  const o = a.createOscillator();
-  const o2 = a.createOscillator();
+  const out = a.createGain();
+  out.gain.value = vol;
+  const pan = a.createStereoPanner();
+  pan.pan.value = (Math.random() - 0.5) * 0.5;
+  out.connect(pan).connect(bus);
+  const partials = [1, 2, 3, 4.02, 5.03];
+  partials.forEach((h, i) => {
+    const o = a.createOscillator();
+    const g = a.createGain();
+    o.type = i === 0 ? 'triangle' : 'sine';
+    o.frequency.value = freq * h;
+    const amp = (i === 0 ? 1 : 0.5 / i) * (i > 1 ? bright + 0.2 : 1);
+    const d = dur / (1 + i * 0.9);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(amp, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(g).connect(out);
+    o.start(t);
+    o.stop(t + d + 0.05);
+  });
+  // ataque de la púa
+  const n = a.createBufferSource();
+  n.buffer = noiseBuffer(a);
+  const nf = a.createBiquadFilter();
+  nf.type = 'bandpass';
+  nf.frequency.value = freq * 4;
+  const ng = a.createGain();
+  ng.gain.setValueAtTime(0.25 * bright, t);
+  ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.03);
+  n.connect(nf).connect(ng).connect(out);
+  n.start(t, Math.random());
+  n.stop(t + 0.05);
+}
+function marimba(freq: number, t: number, vol: number, bus: AudioNode) {
+  const a = ctx!;
+  for (const [h, amp, d] of [[1, 1, 0.5], [4, 0.25, 0.12], [10, 0.08, 0.05]] as const) {
+    const o = a.createOscillator();
+    const g = a.createGain();
+    o.type = 'sine';
+    o.frequency.value = freq * h;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol * amp, t + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(g).connect(bus);
+    o.start(t);
+    o.stop(t + d + 0.05);
+  }
+}
+function brass(freqs: number[], t: number, dur: number, vol: number, bus: AudioNode) {
+  const a = ctx!;
   const f = a.createBiquadFilter();
-  const g = a.createGain();
-  o.type = 'triangle';
-  o2.type = 'sawtooth';
-  o.frequency.value = freq;
-  o2.frequency.value = freq * 1.003;
-  const g2 = a.createGain();
-  g2.gain.value = 0.18 * bright;
   f.type = 'lowpass';
-  f.frequency.setValueAtTime(400 + bright * 3600, t);
-  f.frequency.exponentialRampToValueAtTime(300, t + dur);
+  f.frequency.setValueAtTime(300, t);
+  f.frequency.linearRampToValueAtTime(1600, t + 0.08);
+  f.frequency.exponentialRampToValueAtTime(500, t + dur);
+  const g = a.createGain();
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(vol, t + 0.008);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.05);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(f);
-  o2.connect(g2).connect(f);
   f.connect(g).connect(bus);
-  o.start(t); o2.start(t);
-  o.stop(t + dur + 0.05); o2.stop(t + dur + 0.05);
+  for (const fr of freqs) {
+    const o = a.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.value = fr;
+    o.connect(f);
+    o.start(t);
+    o.stop(t + dur + 0.05);
+  }
 }
 function pad(freqs: number[], t: number, dur: number, vol: number, bus: AudioNode, type: OscillatorType = 'sawtooth') {
   const a = ctx!;
@@ -196,8 +244,17 @@ const ERA_MUSIC = [
   { root: 174.61, scale: [0, 2, 4, 5, 7, 9, 10], bpm: 84, lead: 'pluck', drums: 'none', padType: 'triangle' as OscillatorType }, // renacimiento: mixolidio
 ];
 
-interface MusicState { era: number; mood: 'calm' | 'tense' | 'war'; step: number; next: number; chord: number; phrase: number[]; }
-const music: MusicState = { era: 0, mood: 'calm', step: 0, next: 0, chord: 0, phrase: [] };
+const CULTURE_MUSIC: Record<string, { root: number; scale: number[]; lead: 'flute' | 'pluck' | 'marimba'; drone?: boolean }> = {
+  river: { root: 146.83, scale: [0, 1, 4, 5, 7, 8, 10], lead: 'pluck' },
+  steppe: { root: 130.81, scale: [0, 3, 5, 7, 10], lead: 'flute', drone: true },
+  forest: { root: 146.83, scale: [0, 2, 3, 5, 7, 9, 10], lead: 'flute' },
+  sea: { root: 164.81, scale: [0, 2, 4, 5, 7, 9, 10], lead: 'pluck' },
+  mountain: { root: 155.56, scale: [0, 2, 4, 7, 9], lead: 'flute' },
+  desert: { root: 138.59, scale: [0, 1, 4, 5, 7, 8, 11], lead: 'pluck', drone: true },
+  jungle: { root: 174.61, scale: [0, 2, 4, 7, 9], lead: 'marimba' },
+};
+interface MusicState { era: number; mood: 'calm' | 'tense' | 'war' | 'battle'; culture: string; step: number; next: number; chord: number; phrase: number[]; }
+const music: MusicState = { era: 0, mood: 'calm', culture: 'river', step: 0, next: 0, chord: 0, phrase: [] };
 let musicTimer = 0;
 
 function noteFreq(root: number, scale: number[], degree: number) {
@@ -223,8 +280,12 @@ function makePhrase(len: number) {
 function scheduleMusic() {
   if (!ctx) return;
   const a = ctx;
-  const m = ERA_MUSIC[music.era] ?? ERA_MUSIC[0];
-  const war = music.mood === 'war';
+  const eraM = ERA_MUSIC[music.era] ?? ERA_MUSIC[0];
+  const cm = CULTURE_MUSIC[music.culture] ?? CULTURE_MUSIC.river;
+  // la cultura da la escala y el timbre; la era, el tempo y la percusión
+  const m = { ...eraM, root: cm.root * (music.era >= 3 ? 1.12 : 1), scale: cm.scale, lead: music.era >= 4 ? eraM.lead : cm.lead };
+  const war = music.mood === 'war' || music.mood === 'battle';
+  const battle = music.mood === 'battle';
   const bpm = m.bpm * (war ? 1.25 : 1);
   const beat = 60 / bpm;
   const eighth = beat / 2;
@@ -241,6 +302,8 @@ function scheduleMusic() {
       pad(notes, t, eighth * 16 + 0.5, war ? 0.07 : 0.055, musicBus, m.padType);
       // bajo
       pluck(noteFreq(m.root / 4, m.scale, c), t, eighth * 6, 0.12, musicBus, 0.2);
+      if (cm.drone) pad([m.root / 4, m.root * 1.5 / 4], t, eighth * 16 + 0.5, 0.035, musicBus, 'triangle');
+      if (battle && step % 32 === 0) brass([noteFreq(m.root / 2, m.scale, c), noteFreq(m.root / 2, m.scale, c + 4)], t, beat * 1.5, 0.08, musicBus);
       if (step % 32 === 0) music.phrase = makePhrase(16);
     }
     // melodía (más escasa en calma, para que respire)
@@ -250,7 +313,8 @@ function scheduleMusic() {
       if (deg !== undefined && deg > -50 && (step % 2 === 0 || Math.random() < 0.35)) {
         const f = noteFreq(m.root, m.scale, deg + music.chord);
         if (m.lead === 'flute') flute(f, t, eighth * (Math.random() < 0.3 ? 3 : 1.8), 0.07, musicBus);
-        else pluck(f, t, eighth * 3, 0.09, musicBus, 0.6);
+        else if (m.lead === 'marimba') marimba(f, t, 0.12, musicBus);
+        else pluck(f, t, eighth * 3, 0.1, musicBus, 0.6);
       }
     }
     // percusión
@@ -258,6 +322,7 @@ function scheduleMusic() {
       if (step % 8 === 0) drum(t, 70, war ? 0.5 : 0.32, musicBus);
       if (step % 8 === 3 || step % 8 === 6) drum(t, 110, war ? 0.26 : 0.16, musicBus, 0.2);
       if (war && step % 2 === 1) shaker(t, 0.05, musicBus);
+      if (battle && step % 4 === 2) drum(t, 55, 0.4, musicBus, 0.3);
     } else if (m.drums === 'march') {
       if (step % 4 === 0) drum(t, 80, 0.2, musicBus);
       if (step % 4 === 2) shaker(t, 0.06, musicBus, 3000, 0.12);
@@ -267,17 +332,16 @@ function scheduleMusic() {
   }
 }
 
-export function setMusicContext(era: number, mood: MusicState['mood']) {
-  if (music.era !== era || music.mood !== mood) {
-    music.era = era;
-    music.mood = mood;
-  }
+export function setMusicContext(era: number, mood: MusicState['mood'], culture = music.culture) {
+  music.era = era;
+  music.mood = mood;
+  music.culture = culture;
 }
 
 // ───────────────────────── Ambiente
-interface Amb { wind: GainNode; water: GainNode; town: GainNode; windF: BiquadFilterNode; }
+interface Amb { wind: GainNode; water: GainNode; town: GainNode; rain: GainNode; windF: BiquadFilterNode; }
 let amb: Amb | null = null;
-const ambTarget = { wind: 0.3, water: 0.2, town: 0.1, birds: 0.5, winter: 0 };
+const ambTarget = { wind: 0.3, water: 0.2, town: 0.1, birds: 0.5, winter: 0, rain: 0 };
 let birdTimer = 0, townTimer = 0;
 
 function startAmbience() {
@@ -299,6 +363,7 @@ function startAmbience() {
   const wind = mk('bandpass', 500, 0.6);
   const water = mk('bandpass', 1400, 0.4);
   const town = mk('lowpass', 300, 0.5);
+  const rain = mk('highpass', 2500, 0.3);
   // ráfagas de viento
   const lfo = a.createOscillator();
   const lg = a.createGain();
@@ -306,7 +371,7 @@ function startAmbience() {
   lg.gain.value = 260;
   lfo.connect(lg).connect(wind.f.frequency);
   lfo.start();
-  amb = { wind: wind.g, water: water.g, town: town.g, windF: wind.f };
+  amb = { wind: wind.g, water: water.g, town: town.g, rain: rain.g, windF: wind.f };
 }
 
 function bird(t: number) {
@@ -361,6 +426,7 @@ function tickAmbience(dt: number) {
   amb.wind.gain.setTargetAtTime(0.05 + ambTarget.wind * 0.35 + ambTarget.winter * 0.25, t, 1.5);
   amb.water.gain.setTargetAtTime(ambTarget.water * 0.18, t, 1.5);
   amb.town.gain.setTargetAtTime(ambTarget.town * 0.3, t, 1.5);
+  amb.rain.gain.setTargetAtTime(ambTarget.rain * 0.22, t, 1.2);
   birdTimer -= dt;
   if (birdTimer <= 0) {
     birdTimer = 1.5 + Math.random() * 5 / Math.max(0.1, ambTarget.birds);
@@ -417,7 +483,7 @@ function thud(delay: number, freq: number, vol: number) {
   drum(ctx!.currentTime + delay, freq, vol, sfxBus, 0.25);
 }
 
-export type Sfx = 'tap' | 'open' | 'close' | 'build' | 'built' | 'tech' | 'good' | 'war' | 'event' | 'error' | 'coin' | 'battle' | 'era' | 'death' | 'select' | 'place' | 'victory' | 'defeat';
+export type Sfx = 'clash' | 'arrow' | 'boom' | 'tap' | 'open' | 'close' | 'build' | 'built' | 'tech' | 'good' | 'war' | 'event' | 'error' | 'coin' | 'battle' | 'era' | 'death' | 'select' | 'place' | 'victory' | 'defeat';
 
 export function sfx(kind: Sfx, settings: Settings) {
   if (!settings.sound) return;
@@ -426,6 +492,9 @@ export function sfx(kind: Sfx, settings: Settings) {
   if (!started) startAudio(settings);
   switch (kind) {
     case 'tap': tone(880, 0.05, 'triangle', 0.035); break;
+    case 'clash': { const t = a.currentTime; shaker(t, 0.09, sfxBus, 4200 + Math.random() * 1500, 0.07); tone(2200 + Math.random() * 800, 0.12, 'square', 0.012, 0.01, 0.9); break; }
+    case 'arrow': { const t = a.currentTime; const n = a.createBufferSource(); n.buffer = noiseBuffer(a); const f = a.createBiquadFilter(); f.type = 'bandpass'; f.frequency.setValueAtTime(3000, t); f.frequency.exponentialRampToValueAtTime(900, t + 0.25); const g = a.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.08, t + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.28); n.connect(f).connect(g).connect(sfxBus); n.start(t, Math.random()); n.stop(t + 0.3); break; }
+    case 'boom': drum(a.currentTime, 42, 0.6, sfxBus, 0.8); shaker(a.currentTime, 0.12, sfxBus, 400, 0.4); break;
     case 'select': tone(660, 0.06, 'sine', 0.05); tone(990, 0.08, 'sine', 0.03, 0.03); break;
     case 'open': shaker(a.currentTime, 0.05, sfxBus, 2500, 0.12); tone(440, 0.12, 'triangle', 0.03, 0, 1.5); break;
     case 'close': shaker(a.currentTime, 0.04, sfxBus, 2500, 0.08); tone(660, 0.1, 'triangle', 0.025, 0, 0.66); break;

@@ -234,6 +234,7 @@ export function MenuPanel() {
               </div>
             ))}
             <label class="kv" style={{ cursor: 'pointer' }}><span class="k">Reducir animaciones</span><input type="checkbox" checked={st.reducedMotion} onChange={() => set('reducedMotion')} /></label>
+            <label class="kv" style={{ cursor: 'pointer' }}><span class="k">Ciclo de día y noche</span><input type="checkbox" checked={st.dayNight} onChange={() => set('dayNight')} /></label>
             <label class="kv" style={{ cursor: 'pointer' }}><span class="k">Colores para daltonismo</span><input type="checkbox" checked={st.colorblind} onChange={() => set('colorblind')} /></label>
             <label class="kv" style={{ cursor: 'pointer' }}><span class="k">Pausar ante sucesos importantes</span><input type="checkbox" checked={st.autoPauseEvents} onChange={() => set('autoPauseEvents')} /></label>
             <label class="kv" style={{ cursor: 'pointer' }}><span class="k">Informe cada 50 años</span><input type="checkbox" checked={st.reports} onChange={() => set('reports')} /></label>

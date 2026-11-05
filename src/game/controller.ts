@@ -23,7 +23,7 @@ import { DECREE } from '../data/decrees';
 import { RES_NAME } from '../sim/names';
 import { civEra } from '../data/techs';
 import type { Unit } from '../sim/types';
-import { stepMilitary, deathLog, campLog, unitsAt, hostile, canEnter, orderMove, disband, recruit } from '../sim/military';
+import { battleLog, stepMilitary, deathLog, campLog, unitsAt, hostile, canEnter, orderMove, disband, recruit } from '../sim/military';
 import { UNIT } from '../data/units';
 import { sendEnvoy } from '../sim/minors';
 import { LEVELS, canSpecialize, specialize, appointGovernor, type SpecDef } from '../sim/cities';
@@ -53,6 +53,7 @@ export interface Settings {
   textScale: number;
   colorblind: boolean;
   reports: boolean;
+  dayNight: boolean;
 }
 
 export class Controller {
@@ -70,7 +71,7 @@ export class Controller {
   toastId = 1;
   panel: string | null = null;
   lastResult: { title: string; lines: string[] } | null = null;
-  settings: Settings = { reducedMotion: false, sound: true, autoPauseEvents: true, music: 0.6, sfx: 0.8, ambience: 0.6, textScale: 1, colorblind: false, reports: true };
+  settings: Settings = { reducedMotion: false, sound: true, autoPauseEvents: true, music: 0.6, sfx: 0.8, ambience: 0.6, textScale: 1, colorblind: false, reports: true, dayNight: true };
   log: Toast[] = [];
   report: { from: number; to: number; d: Record<string, number>; snap: Record<string, number> } | null = null;
   snap: Record<string, number> | null = null;
@@ -89,6 +90,7 @@ export class Controller {
     } catch {}
     this.overlay.reducedMotion = this.settings.reducedMotion || matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.isTouch = matchMedia('(pointer: coarse)').matches;
+    this.overlay.dayNight = this.settings.dayNight;
     // El audio solo puede empezar tras un gesto del usuario
     const unlock = () => {
       startAudio(this.settings);
@@ -103,6 +105,7 @@ export class Controller {
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(this.settings)); } catch {}
     this.overlay.reducedMotion = this.settings.reducedMotion;
     applyAudioSettings(this.settings);
+    this.overlay.dayNight = this.settings.dayNight;
     this.applyLook();
     notify();
   }
@@ -302,9 +305,24 @@ export class Controller {
 
   // Muertes, combates cercanos y pausa automática ante invasiones
   invadedAt = -100;
+  lastEra: number | null = null;
+  clashT = 0;
   militaryFeedback() {
     const s = this.state;
     const p = this.player;
+    const now = performance.now();
+    if (battleLog.length && now - this.clashT > 180) {
+      const b = battleLog[battleLog.length - 1];
+      const u = (s.units ?? []).find((x) => x.id === b.a);
+      if (u) {
+        const [x, y] = hexToPixel(u.col, u.row);
+        const cam = this.renderer.cam;
+        if (Math.abs(x - cam.x) < cam.vw / cam.zoom / 1.6 && Math.abs(y - cam.y) < cam.vh / cam.zoom / 1.6) {
+          this.clashT = now;
+          sfx(b.kind === 'arrow' ? 'arrow' : b.kind === 'stone' || b.kind === 'shot' ? 'boom' : 'clash', this.settings);
+        }
+      }
+    }
     for (const d of deathLog.splice(0)) {
       this.renderer.unitDeath(d.col, d.row);
       if (d.civ === p.id) { this.toast(`Hemos perdido un regimiento de ${UNIT[d.type].name.toLowerCase()}`, undefined, 'war'); sfx('battle', this.settings); }
@@ -330,7 +348,11 @@ export class Controller {
     const s = this.state;
     const p = this.player;
     const atWar = Object.values(p.relations).some((r) => r.state === 'war');
-    setMusicContext(civEra(p.techs), atWar ? 'war' : p.stability < 30 ? 'tense' : 'calm');
+    const fighting = (s.units ?? []).some((u) => u.civ === p.id && u.engaged);
+    setMusicContext(civEra(p.techs), fighting ? 'battle' : atWar ? 'war' : p.stability < 30 ? 'tense' : 'calm', p.culture);
+    const era = civEra(p.techs);
+    if (this.lastEra != null && era > this.lastEra) sfx('era', this.settings);
+    this.lastEra = era;
     const cam = this.renderer.cam;
     const [c0, r0] = [Math.floor((cam.x - cam.vw / 2 / cam.zoom) / 55.4), Math.floor((cam.y - cam.vh / 2 / cam.zoom) / 48)];
     const [c1, r1] = [Math.ceil((cam.x + cam.vw / 2 / cam.zoom) / 55.4), Math.ceil((cam.y + cam.vh / 2 / cam.zoom) / 48)];
@@ -353,6 +375,7 @@ export class Controller {
       wind: 0.25 + (cam.zoom < 0.6 ? 0.4 : 0) + (season === 3 ? 0.3 : 0),
       town: Math.min(1, town * cam.zoom),
       winter: season === 3 ? 1 : 0,
+      rain: this.renderer.weather.rain,
     });
   }
 

@@ -167,6 +167,86 @@ export class TerrainPainter {
       hexPath(g, px, py, HEX_SIZE);
       g.fill();
     }
+    // Transiciones suaves: cada borde entre biomas distintos se funde con un degradado
+    const baseCol = (t: Tile, c: number, r: number) => {
+      const [a, b] = BIOME_COLOR[t.biome];
+      let col = mix(a, b, hash2(c, r, 1));
+      if (isLand(t)) {
+        if (t.elev === 2) col = mix(rgbToHex(col), '#8c8471', 0.45);
+        if (t.feature === 'forest') col = mix(rgbToHex(col), t.biome === 'tundra' ? '#5c6b55' : '#5f7a3c', 0.35);
+      }
+      return col;
+    };
+    for (const [c, r, t] of tiles) {
+      const [px, py] = hexToPixel(c, r);
+      const corners = hexCorners(px, py, HEX_SIZE + 0.5);
+      const ns = neighbors(c, r);
+      for (let d = 0; d < 6; d++) {
+        const [nc, nr] = ns[d];
+        if (nc < 0 || nr < 0 || nc >= s.width || nr >= s.height) continue;
+        const n = s.tiles[nr * s.width + nc];
+        if (isLand(n) !== isLand(t) || (n.biome === t.biome && n.feature === t.feature && n.elev === t.elev)) continue;
+        const [i0, i1] = DIR_EDGE[d];
+        const [ax, ay] = corners[i0], [bx, by] = corners[i1];
+        const mx = (ax + bx) / 2, my = (ay + by) / 2;
+        const reach = isLand(t) ? 0.55 : 0.95;
+        const ix = mx + (px - mx) * reach, iy = my + (py - my) * reach;
+        const ncol = rgbToHex(baseCol(n, nc, nr));
+        if (!isLand(t)) {
+          // agua: mancha radial centrada en el borde, sin aristas
+          const rad = HEX_SIZE * 0.95;
+          const rg = g.createRadialGradient(mx, my, 0, mx, my, rad);
+          rg.addColorStop(0, alphaHex(ncol, 0.55));
+          rg.addColorStop(1, alphaHex(ncol, 0));
+          g.save();
+          hexPath(g, px, py, HEX_SIZE + 0.6);
+          g.clip();
+          g.fillStyle = rg;
+          g.fillRect(mx - rad, my - rad, rad * 2, rad * 2);
+          g.restore();
+          continue;
+        }
+        const grd = g.createLinearGradient(mx, my, ix, iy);
+        grd.addColorStop(0, alphaHex(ncol, isLand(t) ? 0.5 : 0.75));
+        grd.addColorStop(1, alphaHex(ncol, 0));
+        g.fillStyle = grd;
+        g.beginPath();
+        g.moveTo(ax, ay);
+        g.lineTo(bx, by);
+        const k2 = isLand(t) ? 0.45 : 0.05;
+        g.lineTo(px + (bx - px) * k2, py + (by - py) * k2);
+        g.lineTo(px + (ax - px) * k2, py + (ay - py) * k2);
+        g.closePath();
+        g.fill();
+      }
+    }
+    // Playas: una franja de arena ondulada en la orilla, en lugar de un borde recto
+    for (const [c, r, t] of tiles) {
+      if (!isLand(t) || t.elev === 2 || t.biome === 'snow') continue;
+      const [px, py] = hexToPixel(c, r);
+      const corners = hexCorners(px, py, HEX_SIZE);
+      const ns = neighbors(c, r);
+      for (let d = 0; d < 6; d++) {
+        const [nc, nr] = ns[d];
+        if (nc < 0 || nr < 0 || nc >= s.width || nr >= s.height) continue;
+        const n = s.tiles[nr * s.width + nc];
+        if (!isWater(n) || n.biome === 'lake') continue;
+        const [i0, i1] = DIR_EDGE[d];
+        const [ax, ay] = corners[i0], [bx, by] = corners[i1];
+        const [nx, ny] = hexToPixel(nc, nr);
+        const bulge = 4 + hash2(c * 3 + d, r, 6) * 4;
+        const mx = (ax + bx) / 2 + ((nx - px) / HEX_W) * bulge, my = (ay + by) / 2 + ((ny - py) / HEX_W) * bulge;
+        g.fillStyle = t.biome === 'tundra' ? 'rgba(210,206,190,0.85)' : 'rgba(226,205,150,0.9)';
+        g.beginPath();
+        g.moveTo(ax, ay);
+        g.quadraticCurveTo(mx, my, bx, by);
+        g.lineTo(bx + (px - bx) * 0.12, by + (py - by) * 0.12);
+        g.lineTo(ax + (px - ax) * 0.12, ay + (py - ay) * 0.12);
+        g.closePath();
+        g.fill();
+      }
+    }
+
     // Textura de grano
     g.save();
     g.globalAlpha = 0.16;
@@ -202,17 +282,20 @@ export class TerrainPainter {
             g.stroke();
           }
         }
+        const lowland = !(t.elev === 2 || t.biome === 'snow') && n.biome !== 'lake';
+        const bulge = lowland ? 4 + hash2(c * 3 + d, r, 6) * 4 : 0;
+        const qx = (ax + bx) / 2 + ((nx - px) / HEX_W) * bulge, qy = (ay + by) / 2 + ((ny - py) / HEX_W) * bulge;
         g.strokeStyle = 'rgba(236,228,200,0.85)';
         g.lineWidth = 2.6;
         g.beginPath();
         g.moveTo(ax, ay);
-        g.lineTo(bx, by);
+        g.quadraticCurveTo(qx, qy, bx, by);
         g.stroke();
         g.strokeStyle = 'rgba(42,33,25,0.7)';
         g.lineWidth = 1.1;
         g.beginPath();
         g.moveTo(ax, ay);
-        g.lineTo(bx, by);
+        g.quadraticCurveTo(qx, qy, bx, by);
         g.stroke();
       }
     }
@@ -296,6 +379,11 @@ export class TerrainPainter {
       drawDoodle(g, px, py, Math.floor(hash2(c, r, 78) * 3));
     }
   }
+}
+
+function alphaHex(hex: string, a: number) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 }
 
 function rgbToHex(c: string): string {

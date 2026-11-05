@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks';
 import { ctrl } from '../game/controller';
 import { notify } from '../game/store';
+import { sfx } from '../game/audio';
 import { Icon, RES_COLOR } from './Icon';
 import { Emblem } from './Emblem';
 import { fmt, sgn, cls } from './util';
@@ -163,7 +164,7 @@ export function Rail() {
   return (
     <nav class="rail" aria-label="Paneles">
       {NAV.map((n) => (
-        <button key={n.id} class={cls(ctrl.panel === n.id && 'on')} onClick={() => { ctrl.panel = ctrl.panel === n.id ? null : n.id; if (ctrl.isTouch) ctrl.overlay.selected = null; notify(); }}>
+        <button key={n.id} class={cls(ctrl.panel === n.id && 'on')} onClick={() => { ctrl.panel = ctrl.panel === n.id ? null : n.id; sfx(ctrl.panel ? 'open' : 'close', ctrl.settings); if (ctrl.isTouch) ctrl.overlay.selected = null; notify(); }}>
           <Icon name={n.icon} />
           <span>{n.label}</span>
           {badges[n.id] && <span class={cls('badge', badges[n.id]!.pulse && 'pulse')}>{badges[n.id]!.n}</span>}

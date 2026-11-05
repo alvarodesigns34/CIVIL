@@ -188,6 +188,7 @@ export function sendScout(state: GameState, civ: Civ, col: number, row: number):
   const path = landPath(state, [from.col, from.row], [col, row], allowWater, 9000);
   if (!path) return allowWater ? 'No hay ruta posible' : 'No hay ruta por tierra (Navegación permite cruzar el mar)';
   civ.res.food -= cost.food;
+  civ.flags.scouted = 1;
   state.scouts.push({ id: state.nextId++, civ: civ.id, col: from.col, row: from.row, path, t: 0 });
   return null;
 }

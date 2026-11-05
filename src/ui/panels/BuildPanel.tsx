@@ -7,6 +7,7 @@ import { buildCost, canAfford, colonyCost, scoutCost, maxProjects, activeProject
 import { fmt, cls } from '../util';
 import type { ResId } from '../../sim/types';
 import { PanelShell } from './PanelShell';
+import { Thumb } from '../Thumb';
 
 const CATS: (BCat | 'all')[] = ['all', 'housing', 'food', 'materials', 'craft', 'faith', 'knowledge', 'civic', 'trade', 'military', 'wonder'];
 
@@ -48,36 +49,37 @@ export function BuildPanel() {
           const taken = b.wonder && s.wonders[b.id] != null;
           const sel = ctrl.buildType === b.id;
           return (
-            <button key={b.id} class={cls('card click', (!unlocked || taken) && 'locked', sel && 'sel')} disabled={!unlocked || taken} onClick={() => ctrl.enterBuild(b.id)}>
-              <div class="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
+            <button key={b.id} class={cls('card click bcard', (!unlocked || taken) && 'locked', sel && 'sel')} disabled={!unlocked || taken} onClick={() => ctrl.enterBuild(b.id)}>
+              <Thumb id={b.id} color={p.color} color2={p.color2} size={64} />
+              <div class="bbody">
+                <div class="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <h4>{b.name}</h4>
-                  <div class="desc">{b.desc}</div>
+                  {b.jobs > 0 && <span class="pill" title="Empleos"><Icon name="pop" />{b.jobs}</span>}
                 </div>
-                {b.jobs > 0 && <span class="pill" title="Empleos"><Icon name="pop" />{b.jobs}</span>}
+                <div class="desc">{b.desc}</div>
+                <div class="pills">
+                  {Object.entries(b.out ?? {}).map(([k, v]) => <span key={k} class="pill good"><Icon name={k} style={{ color: RES_COLOR[k] }} />+{fmt(v as number)}</span>)}
+                  {b.input && Object.entries(b.input).map(([k, v]) => <span key={k} class="pill bad"><Icon name={k} style={{ color: RES_COLOR[k] }} />−{fmt(v as number)}</span>)}
+                  {b.housing ? <span class="pill good"><Icon name="cities" />+{b.housing} hogar</span> : null}
+                  {b.stability ? <span class="pill good"><Icon name="stability" />+{b.stability}</span> : null}
+                  {b.health ? <span class={cls('pill', b.health > 0 ? 'good' : 'bad')}><Icon name="health" />{b.health > 0 ? '+' : ''}{b.health}</span> : null}
+                  {b.soldiers ? <span class="pill accent"><Icon name="sword" />soldados</span> : null}
+                  {b.upkeep ? <span class="pill bad"><Icon name="gold" />−{b.upkeep}/año</span> : null}
+                </div>
+                <div class="pills cost">
+                  {unlocked ? (
+                    <>
+                      {Object.entries(cost).map(([r, v]) => <span key={r} class={cls('pill', p.res[r as ResId] < (v as number) && 'bad')}><Icon name={r} style={{ color: RES_COLOR[r] }} />{fmt(v as number)}</span>)}
+                      <span class="pill"><Icon name="hourglass" />{b.time} año{b.time > 1 ? 's' : ''}</span>
+                      {!afford && <span class="pill bad">Faltan recursos</span>}
+                    </>
+                  ) : (
+                    <span class="pill accent"><Icon name="tech" />Requiere {TECH[b.tech!].name}</span>
+                  )}
+                  {taken && <span class="pill bad">Construida por {s.civs[s.wonders[b.id]].name}</span>}
+                </div>
+                <div class="place">{b.placeText}</div>
               </div>
-              <div class="pills">
-                {Object.entries(b.out ?? {}).map(([k, v]) => <span key={k} class="pill good"><Icon name={k} style={{ color: RES_COLOR[k] }} />+{fmt(v as number)}</span>)}
-                {b.input && Object.entries(b.input).map(([k, v]) => <span key={k} class="pill bad"><Icon name={k} style={{ color: RES_COLOR[k] }} />−{fmt(v as number)}</span>)}
-                {b.housing ? <span class="pill good"><Icon name="cities" />+{b.housing} hogar</span> : null}
-                {b.stability ? <span class="pill good"><Icon name="stability" />+{b.stability}</span> : null}
-                {b.health ? <span class={cls('pill', b.health > 0 ? 'good' : 'bad')}><Icon name="health" />{b.health > 0 ? '+' : ''}{b.health}</span> : null}
-                {b.soldiers ? <span class="pill accent"><Icon name="sword" />soldados</span> : null}
-                {b.upkeep ? <span class="pill bad"><Icon name="gold" />−{b.upkeep}/año</span> : null}
-              </div>
-              <div class="pills" style={{ marginTop: 6 }}>
-                {unlocked ? (
-                  <>
-                    {Object.entries(cost).map(([r, v]) => <span key={r} class={cls('pill', p.res[r as ResId] < (v as number) && 'bad')}><Icon name={r} style={{ color: RES_COLOR[r] }} />{fmt(v as number)}</span>)}
-                    <span class="pill"><Icon name="hourglass" />{b.time} año{b.time > 1 ? 's' : ''}</span>
-                    {!afford && <span class="pill bad">Faltan recursos</span>}
-                  </>
-                ) : (
-                  <span class="pill accent"><Icon name="tech" />Requiere {TECH[b.tech!].name}</span>
-                )}
-                {taken && <span class="pill bad">Construida por {s.civs[s.wonders[b.id]].name}</span>}
-              </div>
-              <div class="muted" style={{ fontSize: 12.5, marginTop: 6 }}>{b.placeText}</div>
             </button>
           );
         })}

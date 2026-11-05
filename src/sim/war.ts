@@ -59,13 +59,26 @@ export function yearlyWar(state: GameState, rng: RNG) {
           const d = hexDistance(fs.col, fs.row, ts.col, ts.row);
           if (!best || d < best.d) best = { s: ts, from: fs, d };
         }
-    if (!best || best.d > 22) continue;
+    // El jugador puede fijar su objetivo
+    let forcedKind: 'army' | 'raid' | null = null;
+    if (civ.isPlayer && civ.flags.target) {
+      const ts = settlementById(state, civ.flags.target);
+      if (ts && enemies.some((e) => e.id === ts.civ)) {
+        let from: Settlement | null = null, fd = Infinity;
+        for (const fs of civSettlements(state, civ.id)) {
+          const d = hexDistance(fs.col, fs.row, ts.col, ts.row);
+          if (d < fd) { fd = d; from = fs; }
+        }
+        if (from) { best = { s: ts, from, d: fd }; forcedKind = civ.flags.targetRaid ? 'raid' : 'army'; }
+      } else civ.flags.target = 0;
+    }
+    if (!best || (best.d > 22 && !forcedKind)) continue;
     const def = settlementDefense(state, state.civs[best.s.civ], best.s);
     const str = civ.strength * 0.7;
-    const kind = str > def * 0.75 ? 'army' : 'raid';
+    const kind = forcedKind ?? (str > def * 0.75 ? 'army' : 'raid');
     // La IA prudente no ataca si es muy inferior
     if (!civ.isPlayer && str < def * 0.35 && rng.chance(0.6)) continue;
-    if (civ.isPlayer && civ.flags.defensive) continue;
+    if (civ.isPlayer && civ.flags.defensive && !civ.flags.target) continue;
     state.armies.push({ id: state.nextId++, civ: civ.id, target: best.s.id, from: best.from.id, strength: Math.round(str), t: 0, kind });
   }
   // Tratados de paz entre IA o propuestas al jugador

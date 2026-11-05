@@ -13,6 +13,8 @@ import { clamp } from '../core/noise';
 
 const PRIORITY: Record<string, number> = { food: 0, materials: 1, military: 2, faith: 3, knowledge: 4, trade: 5, craft: 6, civic: 7, housing: 8, wonder: 9 };
 export const CENTER_HOUSING = 30;
+// Registro transitorio (no se guarda) de obras terminadas este año, para efectos visuales
+export const builtLog: { civ: number; col: number; row: number; type: string }[] = [];
 
 export function placeCtx(state: GameState, civ: Civ, s: Settlement, col: number, row: number): PlaceCtx {
   const tile = tileAt(state, col, row)!;
@@ -140,6 +142,7 @@ export function simulateEconomy(state: GameState, civ: Civ) {
         b.progress = Math.min(1, b.progress + constructionSpeed / def.time);
         if (b.progress >= 1) {
           b.built = state.year;
+          builtLog.push({ civ: civ.id, col: c, row: r, type: def.id });
           onBuilt(state, civ, s, t, def);
         }
         continue;

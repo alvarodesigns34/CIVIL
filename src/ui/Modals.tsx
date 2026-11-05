@@ -160,6 +160,13 @@ export function MenuPanel() {
           <span class="eyebrow">Ajustes</span>
           <div class="card">
             <label class="kv" style={{ cursor: 'pointer' }}><span class="k">Sonido</span><input type="checkbox" checked={st.sound} onChange={() => set('sound')} /></label>
+            {([['music', 'Música'], ['ambience', 'Ambiente'], ['sfx', 'Efectos']] as const).map(([k, label]) => (
+              <div class="slider" key={k}>
+                <label for={'vol-' + k}>{label}</label>
+                <input id={'vol-' + k} type="range" min="0" max="1" step="0.05" value={(st as any)[k]} disabled={!st.sound}
+                  onInput={(e) => { (st as any)[k] = +(e.target as HTMLInputElement).value; ctrl.saveSettings(); }} />
+              </div>
+            ))}
             <label class="kv" style={{ cursor: 'pointer' }}><span class="k">Reducir animaciones</span><input type="checkbox" checked={st.reducedMotion} onChange={() => set('reducedMotion')} /></label>
           </div>
         </div>

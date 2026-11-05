@@ -44,6 +44,22 @@ export class Renderer {
   time = 0;
   smoke: { x: number; y: number; life: number; vx: number }[] = [];
   playerId = 0;
+  sparks: { x: number; y: number; vx: number; vy: number; life: number; c: string; r: number }[] = [];
+  rings: { x: number; y: number; life: number; big: boolean }[] = [];
+  snow: { x: number; y: number; s: number }[] = [];
+  birds: { x: number; y: number; vx: number; vy: number; n: number; ph: number }[] = [];
+  weather = { rain: 0, rainTarget: 0, timer: 0 };
+
+  // Destello al completar una obra
+  burst(col: number, row: number, size = 1) {
+    const [x, y] = hexToPixel(col, row);
+    const cols = ['#f6d36b', '#e2c044', '#fff3c4', '#d98a3a'];
+    for (let i = 0; i < 26 * size; i++) {
+      const a = Math.random() * Math.PI * 2, v = 20 + Math.random() * 50 * size;
+      this.sparks.push({ x, y: y - 6, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 40, life: 1, c: cols[i % 4], r: 1 + Math.random() * 1.6 });
+    }
+    this.rings.push({ x, y, life: 1, big: size > 1 });
+  }
 
   constructor(canvas: HTMLCanvasElement, state: GameState) {
     this.canvas = canvas;
@@ -226,6 +242,8 @@ export class Renderer {
 
     // Humo
     this.drawSmoke(g, dt);
+    if (!ov.reducedMotion) this.drawLife(g, dt, c0, c1, r0, r1, ex, ov);
+    this.drawSparks(g, dt);
 
     // Habitantes
     if (z > 0.75) this.drawWalkers(g, dt, ov, wx0, wy0, wx1, wy1);
@@ -246,6 +264,7 @@ export class Renderer {
     if (!ov.reducedMotion) this.drawClouds(g, dt);
     g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.drawSeason(g, ov.yearFrac);
+    if (!ov.reducedMotion) this.drawWeather(g, dt, ov.yearFrac);
 
     // Etiquetas en coordenadas de pantalla
     this.drawLabels(g, ex, ov);
@@ -636,6 +655,172 @@ export class Renderer {
         g.beginPath(); g.ellipse(c.x, c.y, c.r * 0.9, c.r * 0.38, 0, 0, Math.PI * 2); g.fill();
       }
       void H;
+    }
+  }
+
+  drawSparks(g: CanvasRenderingContext2D, dt: number) {
+    for (const r of this.rings) {
+      r.life -= dt * 0.9;
+      if (r.life <= 0) continue;
+      const k = 1 - r.life;
+      g.strokeStyle = `rgba(246,211,107,${r.life * 0.9})`;
+      g.lineWidth = 3 * r.life + 0.5;
+      g.beginPath();
+      g.ellipse(r.x, r.y + 4, 10 + k * (r.big ? 70 : 36), 6 + k * (r.big ? 40 : 20), 0, 0, Math.PI * 2);
+      g.stroke();
+    }
+    this.rings = this.rings.filter((r) => r.life > 0);
+    for (const p of this.sparks) {
+      p.life -= dt * 0.8;
+      p.vy += 90 * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      if (p.life <= 0) continue;
+      g.globalAlpha = Math.min(1, p.life * 1.5);
+      g.fillStyle = p.c;
+      g.beginPath();
+      g.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.globalAlpha = 1;
+    this.sparks = this.sparks.filter((p) => p.life > 0).slice(-400);
+  }
+
+  // Vida en el mapa: rebaños, barcas, aves, nieve en el suelo y fuegos de asedio
+  drawLife(g: CanvasRenderingContext2D, dt: number, c0: number, c1: number, r0: number, r1: number, ex: Uint8Array, ov: Overlay) {
+    const s = this.state;
+    const t = this.time;
+    const z = this.cam.zoom;
+    const winter = this.winterAmount(ov.yearFrac);
+    for (let r = r0; r <= r1; r++)
+      for (let c = c0; c <= c1; c++) {
+        const i = r * s.width + c;
+        if (!ex[i]) continue;
+        const tile = s.tiles[i];
+        const [px, py] = hexToPixel(c, r);
+        // nieve estacional en latitudes frías y templadas
+        if (winter > 0 && tile.biome !== 'deep' && tile.biome !== 'ocean' && tile.biome !== 'coast' && tile.biome !== 'desert') {
+          const lat = Math.abs(r / s.height - 0.5) * 2;
+          const a = winter * Math.max(0, (lat - 0.25) * 1.1) * (tile.biome === 'lake' ? 0.6 : 1);
+          if (a > 0.02) {
+            hexPath(g, px, py, HEX_SIZE + 0.5);
+            g.fillStyle = `rgba(244,247,250,${Math.min(0.55, a)})`;
+            g.fill();
+          }
+        }
+        if (z < 0.7 || !tile.b || tile.b.progress < 1 || tile.b.staff <= 0) continue;
+        const type = tile.b.type;
+        if (type === 'pasture') {
+          for (let k = 0; k < 4; k++) {
+            const ph = hash2(c, r, 90 + k) * 6.28;
+            const x = px + Math.cos(t * 0.15 + ph) * 13 + Math.sin(t * 0.07 + ph * 2) * 5;
+            const y = py + 2 + Math.sin(t * 0.12 + ph) * 8;
+            g.fillStyle = k === 0 ? '#5b4030' : '#f3ede0';
+            g.beginPath(); g.ellipse(x, y, 2.6, 1.7, 0, 0, Math.PI * 2); g.fill();
+            g.fillStyle = '#2b2119'; g.fillRect(x + (Math.cos(t * 0.15 + ph) > 0 ? 1.8 : -3), y - 1.4, 1.3, 1.3);
+          }
+        } else if (type === 'fishery' || type === 'harbor' || type === 'company') {
+          const ph = hash2(c, r, 7) * 6.28;
+          const R = type === 'fishery' ? 14 : 18;
+          const x = px + Math.cos(t * 0.25 + ph) * R, y = py + Math.sin(t * 0.25 + ph) * R * 0.5 + 4;
+          const bob = Math.sin(t * 2 + ph) * 0.8;
+          g.fillStyle = '#5e3f26';
+          g.beginPath(); g.moveTo(x - 4, y + bob); g.lineTo(x + 4, y + bob); g.lineTo(x + 2.5, y + 2 + bob); g.lineTo(x - 2.5, y + 2 + bob); g.closePath(); g.fill();
+          g.fillStyle = '#efe4c8';
+          g.beginPath(); g.moveTo(x, y - 6 + bob); g.lineTo(x + 3.5, y - 0.5 + bob); g.lineTo(x, y - 0.5 + bob); g.closePath(); g.fill();
+          g.strokeStyle = 'rgba(235,245,240,0.45)'; g.lineWidth = 0.8;
+          g.beginPath(); g.moveTo(x - 6, y + 3); g.lineTo(x - 10, y + 3.5); g.stroke();
+        } else if (type === 'farm' && Math.floor(ov.yearFrac * 4) === 1) {
+          // campesinos segando en verano
+          const ph = hash2(c, r, 3);
+          const x = px - 12 + ((t * 3 + ph * 20) % 24), y = py + 6;
+          g.fillStyle = '#8a4a2f'; g.fillRect(x - 0.8, y - 3.5, 1.6, 3);
+          g.fillStyle = '#d9b48c'; g.beginPath(); g.arc(x, y - 4.4, 0.9, 0, Math.PI * 2); g.fill();
+        }
+      }
+    // Asedios: humo y fuego en ciudades sitiadas
+    for (const st of s.settlements) {
+      if (st.siege <= 0 || !ex[st.row * s.width + st.col]) continue;
+      const [x, y] = hexToPixel(st.col, st.row);
+      if (Math.random() < dt * 8) this.smoke.push({ x: x + (Math.random() - 0.5) * 30, y: y - 6, life: 1, vx: (Math.random() - 0.5) * 8 });
+      for (let k = 0; k < 3; k++) {
+        const fx = x - 14 + k * 13, fy = y + 6 - k * 3;
+        const fl = 0.6 + Math.sin(t * 13 + k * 2) * 0.25;
+        g.fillStyle = `rgba(240,140,50,${fl})`;
+        g.beginPath(); g.moveTo(fx - 3, fy); g.quadraticCurveTo(fx, fy - 10 * fl, fx + 3, fy); g.fill();
+      }
+    }
+    // Aves migratorias
+    if (this.birds.length < 3 && Math.random() < dt * 0.15) {
+      const [wx0, wy0] = this.cam.toWorld(0, 0);
+      const [wx1, wy1] = this.cam.toWorld(this.cam.vw, this.cam.vh);
+      const fromLeft = Math.random() < 0.5;
+      this.birds.push({ x: fromLeft ? wx0 - 40 : wx1 + 40, y: wy0 + Math.random() * (wy1 - wy0), vx: (fromLeft ? 1 : -1) * (28 + Math.random() * 20), vy: (Math.random() - 0.5) * 8, n: 3 + Math.floor(Math.random() * 5), ph: Math.random() * 6 });
+    }
+    g.strokeStyle = 'rgba(42,33,25,0.55)';
+    g.lineWidth = 1.1;
+    for (const b of this.birds) {
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      const dir = Math.sign(b.vx);
+      for (let k = 0; k < b.n; k++) {
+        const row = Math.ceil(k / 2), side = k % 2 ? 1 : -1;
+        const x = b.x - dir * row * 9, y = b.y + side * row * 6;
+        const flap = Math.sin(t * 9 + b.ph + k) * 2.2;
+        g.beginPath(); g.moveTo(x - 4, y - flap); g.lineTo(x, y); g.lineTo(x + 4, y - flap); g.stroke();
+      }
+    }
+    const [bx0] = this.cam.toWorld(-200, 0);
+    const [bx1] = this.cam.toWorld(this.cam.vw + 200, 0);
+    this.birds = this.birds.filter((b) => b.x > bx0 - 200 && b.x < bx1 + 200);
+  }
+
+  winterAmount(f: number) {
+    // 0 fuera de invierno; sube a finales de otoño y se funde al empezar la primavera
+    const p = f * 4;
+    if (p >= 3) return Math.min(1, (p - 3) * 4);
+    if (p < 0.4) return 1 - p / 0.4;
+    if (p > 2.8) return (p - 2.8) * 2;
+    return 0;
+  }
+
+  drawWeather(g: CanvasRenderingContext2D, dt: number, f: number) {
+    const W = this.cam.vw, H = this.cam.vh;
+    const winter = this.winterAmount(f);
+    // copos de nieve (pantalla)
+    const want = Math.round(winter * 90);
+    while (this.snow.length < want) this.snow.push({ x: Math.random() * W, y: Math.random() * H, s: 0.5 + Math.random() });
+    if (this.snow.length > want) this.snow.length = want;
+    g.fillStyle = 'rgba(255,255,255,0.8)';
+    for (const p of this.snow) {
+      p.y += (18 + p.s * 22) * dt;
+      p.x += Math.sin(this.time + p.s * 9) * 12 * dt;
+      if (p.y > H) { p.y = -4; p.x = Math.random() * W; }
+      g.beginPath(); g.arc(p.x, p.y, p.s * 1.4, 0, Math.PI * 2); g.fill();
+    }
+    // chaparrones ocasionales en primavera y otoño
+    const w = this.weather;
+    w.timer -= dt;
+    if (w.timer <= 0) {
+      const season = Math.floor(f * 4) & 3;
+      w.rainTarget = (season === 0 || season === 2) && Math.random() < 0.35 ? 0.5 + Math.random() * 0.5 : 0;
+      w.timer = 6 + Math.random() * 10;
+    }
+    w.rain += (w.rainTarget - w.rain) * Math.min(1, dt * 0.6);
+    if (w.rain > 0.03) {
+      g.fillStyle = `rgba(60,70,90,${w.rain * 0.08})`;
+      g.fillRect(0, 0, W, H);
+      g.strokeStyle = `rgba(200,215,230,${w.rain * 0.35})`;
+      g.lineWidth = 1;
+      g.beginPath();
+      const n = Math.round(w.rain * 140);
+      for (let i = 0; i < n; i++) {
+        const x = (hash2(i, 1, 4) * W + this.time * 240 * (0.8 + hash2(i, 2, 4) * 0.4)) % (W + 40) - 20;
+        const y = (hash2(i, 3, 4) * H + this.time * 700 * (0.8 + hash2(i, 4, 4) * 0.4)) % H;
+        g.moveTo(x, y);
+        g.lineTo(x - 4, y + 12);
+      }
+      g.stroke();
     }
   }
 

@@ -15,7 +15,12 @@ import { adoptPolicy, canAdoptPolicy, changeGovernment, govChangeCost, revokePol
 import { doDiplo } from '../sim/diplomacy';
 import { advanceScouts } from '../sim/actions';
 import { AMBITIONS } from '../data/ambitions';
-import { sfx } from './audio';
+import { sfx, startAudio, audioFrame, applyAudioSettings, setMusicContext, setAmbience } from './audio';
+import { builtLog } from '../sim/economy';
+import { checkTutorial } from '../sim/tutorial';
+import { RES_NAME } from '../sim/names';
+import { civEra } from '../data/techs';
+import { hexToPixel } from '../core/hex';
 
 export const SPEEDS = [0, 3.2, 1.7, 0.85, 0.35]; // segundos por año
 const SAVE_KEY = 'civengine.save.v1';
@@ -33,6 +38,9 @@ export interface Settings {
   reducedMotion: boolean;
   sound: boolean;
   autoPauseEvents: boolean;
+  music: number;
+  sfx: number;
+  ambience: number;
 }
 
 export class Controller {
@@ -50,7 +58,8 @@ export class Controller {
   toastId = 1;
   panel: string | null = null;
   lastResult: { title: string; lines: string[] } | null = null;
-  settings: Settings = { reducedMotion: false, sound: true, autoPauseEvents: true };
+  settings: Settings = { reducedMotion: false, sound: true, autoPauseEvents: true, music: 0.6, sfx: 0.8, ambience: 0.6 };
+  audioClock = 0;
   screen: 'title' | 'game' = 'title';
   lastReport: YearReport | null = null;
   pendingConfirm: [number, number] | null = null; // confirmación de construcción en táctil
@@ -65,11 +74,20 @@ export class Controller {
     } catch {}
     this.overlay.reducedMotion = this.settings.reducedMotion || matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.isTouch = matchMedia('(pointer: coarse)').matches;
+    // El audio solo puede empezar tras un gesto del usuario
+    const unlock = () => {
+      startAudio(this.settings);
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
   }
 
   saveSettings() {
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(this.settings)); } catch {}
     this.overlay.reducedMotion = this.settings.reducedMotion;
+    applyAudioSettings(this.settings);
     notify();
   }
 
@@ -201,13 +219,50 @@ export class Controller {
         this.overlay.yearFrac = Math.min(0.999, this.acc / spy);
       }
       this.renderer.draw(dt, this.overlay);
+      this.audioClock -= dt;
+      if (this.audioClock <= 0) {
+        this.audioClock = 1;
+        this.updateSoundscape();
+      }
       // caducidad de avisos
       const before = this.toasts.length;
-      this.toasts = this.toasts.filter((t) => now - t.at < 6500);
+      this.toasts = this.toasts.filter((t) => now - t.at < 5500);
       if (this.toasts.length !== before) notify();
     }
+    audioFrame(dt);
     requestAnimationFrame(this.frame);
   };
+
+  // Música y ambiente según lo que ocurre y lo que se ve
+  updateSoundscape() {
+    const s = this.state;
+    const p = this.player;
+    const atWar = Object.values(p.relations).some((r) => r.state === 'war');
+    setMusicContext(civEra(p.techs), atWar ? 'war' : p.stability < 30 ? 'tense' : 'calm');
+    const cam = this.renderer.cam;
+    const [c0, r0] = [Math.floor((cam.x - cam.vw / 2 / cam.zoom) / 55.4), Math.floor((cam.y - cam.vh / 2 / cam.zoom) / 48)];
+    const [c1, r1] = [Math.ceil((cam.x + cam.vw / 2 / cam.zoom) / 55.4), Math.ceil((cam.y + cam.vh / 2 / cam.zoom) / 48)];
+    let water = 0, forest = 0, n = 0, town = 0;
+    for (let r = Math.max(0, r0); r <= Math.min(s.height - 1, r1); r += 2)
+      for (let c = Math.max(0, c0); c <= Math.min(s.width - 1, c1); c += 2) {
+        const t = s.tiles[r * s.width + c];
+        n++;
+        if (t.biome === 'coast' || t.biome === 'ocean' || t.biome === 'deep' || t.biome === 'lake') water++;
+        if (t.feature === 'forest') forest++;
+      }
+    for (const st of s.settlements) {
+      const [x, y] = hexToPixel(st.col, st.row);
+      if (Math.abs(x - cam.x) < cam.vw / cam.zoom / 2 && Math.abs(y - cam.y) < cam.vh / cam.zoom / 2) town += st.pop / 400;
+    }
+    const season = Math.floor(this.overlay.yearFrac * 4) & 3;
+    setAmbience({
+      water: n ? (water / n) * 1.3 : 0,
+      birds: n ? 0.3 + (forest / n) * 1.5 : 0.3,
+      wind: 0.25 + (cam.zoom < 0.6 ? 0.4 : 0) + (season === 3 ? 0.3 : 0),
+      town: Math.min(1, town * cam.zoom),
+      winter: season === 3 ? 1 : 0,
+    });
+  }
 
   blockingEvent(): PendingEvent | null {
     if (!this.state) return null;
@@ -219,8 +274,27 @@ export class Controller {
     const p = this.player;
     const prevWars = new Set(Object.entries(p.relations).filter(([, r]) => r.state === 'war').map(([k]) => k));
     const prevSettlements = s.settlements.filter((x) => x.civ === p.id).length;
+    builtLog.length = 0;
+    const chronBefore = s.chronicle.length;
+    const leaderBefore = p.leader.name;
     const report = yearTick(s);
+    // Batallas y sucesos que nos afectan
+    for (const e of s.chronicle.slice(chronBefore)) {
+      if (e.kind === 'war' && e.text.includes(p.people) && !e.text.includes('declararon')) {
+        this.toast('Noticias del frente', e.text, e.text.includes(`Los ${p.people}`) && !e.text.includes('derrotado') ? 'good' : 'war');
+        sfx('battle', this.settings);
+      }
+    }
+    if (p.leader.name !== leaderBefore) sfx('death', this.settings);
     this.lastReport = report;
+    let builtCount = 0;
+    for (const b of builtLog) {
+      if (b.civ !== p.id) continue;
+      builtCount++;
+      this.renderer.burst(b.col, b.row, BUILDING[b.type].wonder ? 2 : 1);
+      if (BUILDING[b.type].wonder) this.toast(`¡${BUILDING[b.type].name} completada!`, 'Una maravilla que el mundo recordará.', 'good');
+    }
+    if (builtCount) sfx('built', this.settings);
     // exploración pasiva alrededor del territorio propio
     for (const st of s.settlements) if (st.civ === p.id && st.pop > 0) reveal(s, st.col, st.row, st.radius + 2);
     for (const t of report.techs) {
@@ -246,6 +320,7 @@ export class Controller {
     if (!p.research && this.state.year % 6 === 0) {
       // recordatorio suave
     }
+    this.checkTut();
     if (s.year - s.lastAutosave >= 10) {
       s.lastAutosave = s.year;
       this.save(true);
@@ -258,6 +333,16 @@ export class Controller {
     // recalcular vista previa
     if (this.overlay.mode === 'build' && this.buildType) this.computeBuildPreview();
     notify();
+  }
+
+  checkTut() {
+    if (!this.state) return;
+    const step = checkTutorial(this.state, this.player);
+    if (step) {
+      const rw = Object.entries(step.reward).map(([k, v]) => `+${v} ${RES_NAME[k as ResId]}`).join(', ');
+      this.toast(`Objetivo cumplido: ${step.title}`, `El consejo os recompensa: ${rw}.`, 'good');
+      sfx('good', this.settings);
+    }
   }
 
   setSpeed(n: number) {
@@ -482,7 +567,9 @@ export class Controller {
       this.toast('No se puede construir', err, 'bad');
       sfx('error', this.settings);
     } else {
-      sfx('build', this.settings);
+      sfx('place', this.settings);
+      this.renderer.burst(c, r, 0.4);
+      this.checkTut();
       this.overlay.selected = [c, r];
       this.pendingConfirm = null;
       const def = BUILDING[this.buildType!];
@@ -511,6 +598,7 @@ export class Controller {
       sfx('error', this.settings);
     } else {
       this.toast('Los exploradores parten', undefined, 'good');
+      this.checkTut();
       this.cancelMode();
     }
     notify();
@@ -548,6 +636,8 @@ export class Controller {
   research(id: string) {
     this.player.research = id;
     progressResearch(this.state, this.player);
+    sfx('select', this.settings);
+    this.checkTut();
     notify();
   }
   chooseTradition(id: string) {
@@ -564,6 +654,7 @@ export class Controller {
     if (why) return this.toast('No se puede adoptar', why, 'bad');
     adoptPolicy(this.state, this.player, id);
     sfx('good', this.settings);
+    this.checkTut();
     notify();
   }
   revoke(id: string) {
@@ -589,6 +680,21 @@ export class Controller {
     else sfx('coin', this.settings);
     notify();
   }
+  setTarget(sid: number, raid: boolean) {
+    const p = this.player;
+    if (p.flags.target === sid && !!p.flags.targetRaid === raid) {
+      p.flags.target = 0;
+      this.toast('Campaña cancelada', 'Tus ejércitos elegirán sus objetivos.', 'info');
+    } else {
+      p.flags.target = sid;
+      p.flags.targetRaid = raid ? 1 : 0;
+      const st = settlementById(this.state, sid);
+      this.toast(raid ? 'Orden de saqueo' : 'Orden de conquista', `Tus tropas marcharán sobre ${st?.name}.`, 'war');
+      sfx('war', this.settings);
+    }
+    notify();
+  }
+
   toggleDefensive() {
     this.player.flags.defensive = this.player.flags.defensive ? 0 : 1;
     notify();

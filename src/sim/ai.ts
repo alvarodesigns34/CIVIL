@@ -147,7 +147,7 @@ function wants(state: GameState, civ: Civ): Record<string, number> {
   const foodW = foodRatio < 0 ? 10 : foodRatio < 0.1 ? 6 : foodRatio < 0.2 ? 2.5 : civ.res.food < foodStorage(state, civ) * 0.3 ? 1.5 : 0.3;
   for (const id of ['farm', 'pasture', 'fishery', 'hunters']) w[id] = foodW * (id === 'hunters' ? 0.6 : 1);
   const crowded = sets.some((s) => s.pop > s.housing * 0.85);
-  w.hut = crowded ? 7 : 0.2;
+  w.hut = (crowded ? 7 : 0.2) * (civ.techs.includes('masonry') ? 0.25 : 1);
   w.house = crowded ? 6 : 0.3;
   w.townhouse = crowded ? 5 : 0.2;
   w.granary = civ.res.food >= foodStorage(state, civ) * 0.9 ? 3 : 0.2;

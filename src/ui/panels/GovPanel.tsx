@@ -10,17 +10,19 @@ import { describeFxObj } from '../../sim/events';
 import { fmt, sgn, cls } from '../util';
 import { FACTION_IDS } from '../../sim/types';
 import { PanelShell } from './PanelShell';
+import { GP_TYPES, GP_INFO, gpCost, gpRates } from '../../sim/greatPeople';
 
 export function GovPanel() {
   const p = ctrl.player;
   const [tab, setTab] = useState(p.traditionOffer ? 'traditions' : 'leader');
   return (
-    <PanelShell title="Gobierno" sub={`${GOV[p.government].name} · estabilidad ${Math.round(p.stability)}`} tabs={[{ id: 'leader', label: 'Líder' }, { id: 'factions', label: 'Facciones' }, { id: 'laws', label: 'Leyes' }, { id: 'regime', label: 'Régimen' }, { id: 'traditions', label: p.traditionOffer ? 'Tradiciones •' : 'Tradiciones' }]} tab={tab} onTab={setTab}>
+    <PanelShell title="Gobierno" sub={`${GOV[p.government].name} · estabilidad ${Math.round(p.stability)}`} tabs={[{ id: 'leader', label: 'Líder' }, { id: 'factions', label: 'Facciones' }, { id: 'laws', label: 'Leyes' }, { id: 'regime', label: 'Régimen' }, { id: 'traditions', label: p.traditionOffer ? 'Tradiciones •' : 'Tradiciones' }, { id: 'greats', label: 'Ilustres' }]} tab={tab} onTab={setTab}>
       {tab === 'leader' && <Leader />}
       {tab === 'factions' && <Factions />}
       {tab === 'laws' && <Laws />}
       {tab === 'regime' && <Regime />}
       {tab === 'traditions' && <Traditions />}
+      {tab === 'greats' && <Greats />}
     </PanelShell>
   );
 }
@@ -221,6 +223,40 @@ function Traditions() {
         {p.traditions.length === 0 && <div class="muted">Todavía ninguna.</div>}
         {p.traditions.map((id) => (
           <div class="kv" key={id}><span class="k"><b>{TRADITION[id].name}</b></span><span class="v" style={{ fontWeight: 500, fontSize: 13 }}>{TRADITION[id].desc}</span></div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function Greats() {
+  const p = ctrl.player;
+  const s = ctrl.state;
+  const rates = gpRates(s, p);
+  const cost = gpCost(p);
+  return (
+    <>
+      <div class="muted" style={{ fontSize: 13.5, marginBottom: 10 }}>Los personajes ilustres nacen de lo que tu pueblo cultiva. Cada uno que nace encarece al siguiente. El próximo necesitará <b>{fmt(cost)}</b> puntos.</div>
+      {GP_TYPES.map((t) => {
+        const info = GP_INFO[t];
+        const v = p.gp?.[t] ?? 0;
+        const r = rates[t];
+        return (
+          <div class="card" key={t}>
+            <div class="row" style={{ justifyContent: 'space-between' }}>
+              <div class="row"><span style={{ width: 10, height: 10, borderRadius: 3, background: info.color, display: 'inline-block' }} /><h4>{info.plural}</h4></div>
+              <span class="num muted" style={{ fontSize: 13 }}>{fmt(v)} / {fmt(cost)} · {r > 0.05 ? `+${r.toFixed(1)}/año` : 'sin avance'}</span>
+            </div>
+            <div class="bar" style={{ marginTop: 6 }}><i style={{ width: `${Math.min(100, (v / cost) * 100)}%`, background: info.color }} /></div>
+            <div class="desc">{info.desc}</div>
+          </div>
+        );
+      })}
+      <div class="section">
+        <span class="eyebrow">Galería de ilustres ({p.greats?.length ?? 0})</span>
+        {!(p.greats?.length) && <div class="muted">Todavía no ha nacido ninguno.</div>}
+        {(p.greats ?? []).slice().reverse().map((g, i) => (
+          <div class="kv" key={i}><span class="k"><b>{g.name}</b> · {GP_INFO[g.type as keyof typeof GP_INFO].name}</span><span class="v">año {g.year}</span></div>
         ))}
       </div>
     </>

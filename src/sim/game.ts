@@ -5,6 +5,7 @@ import { simulateEconomy, progressResearch, traditionCost } from './economy';
 import { civEra, TECH, ERAS } from '../data/techs';
 import { offerTraditions, advanceColonists } from './actions';
 import { yearlyLeader } from './politics';
+import { yearlyGreatPeople } from './greatPeople';
 import { yearlyWar, checkElimination } from './war';
 import { updateContacts, yearlyDiplomacy } from './diplomacy';
 import { aiYear } from './ai';
@@ -65,6 +66,7 @@ export function yearTick(state: GameState): YearReport {
     }
 
     yearlyLeader(state, civ, rng);
+    yearlyGreatPeople(state, civ, rng);
     civ.modifiers = civ.modifiers.filter((m) => m.until > state.year);
 
     // Hambruna del jugador

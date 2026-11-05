@@ -3,6 +3,8 @@ import { ctrl } from '../game/controller';
 import { notify } from '../game/store';
 import { Icon, RES_COLOR } from './Icon';
 import { Emblem } from './Emblem';
+import { Thumb } from './Thumb';
+import { settlementTier } from '../render/sprites';
 import { tileAt, settlementAt, settlementById } from '../sim/world';
 import { tileName, DEPOSITS, isLand } from '../data/terrain';
 import { BUILDING, BUILDINGS, BCAT_NAME } from '../data/buildings';
@@ -73,6 +75,26 @@ export function TileCard() {
             <span class="pills" style={{ marginTop: 0 }}><CostPills cost={fortCost(nextFort) as any} /></span>
           </div>
         )}
+        {!civ.isPlayer && p.relations[civ.id]?.state === 'war' && (() => {
+          const def = settlementDefense(s, civ, st);
+          const atk = p.strength * 0.7;
+          const ratio = atk / Math.max(1, def);
+          const verdict = ratio > 1.6 ? ['Victoria probable', 'good'] : ratio > 1 ? ['Ventaja', 'good'] : ratio > 0.75 ? ['Incierto', ''] : ['Desfavorable', 'bad'];
+          const isT = p.flags.target === st.id;
+          return (
+            <div class="card" style={{ marginTop: 10, borderColor: 'rgba(168,50,31,.4)' }}>
+              <div class="eyebrow">Campaña militar</div>
+              <div class="kv"><span class="k">Tu fuerza de ataque</span><span class="v">{fmt(atk)}</span></div>
+              <div class="kv"><span class="k">Su defensa</span><span class="v">{fmt(def)}</span></div>
+              <div class="kv"><span class="k">Pronóstico</span><span class={cls('v', verdict[1])}>{verdict[0]}</span></div>
+              <div class="actions">
+                <button class="btn small" style={{ background: 'var(--bad)' }} onClick={() => ctrl.setTarget(st.id, false)}><Icon name="sword" /> {isT && !p.flags.targetRaid ? 'Cancelar conquista' : 'Conquistar'}</button>
+                <button class="btn small ghost" onClick={() => ctrl.setTarget(st.id, true)}>{isT && p.flags.targetRaid ? 'Cancelar saqueo' : 'Saquear'}</button>
+              </div>
+              <div class="muted" style={{ fontSize: 12.5, marginTop: 6 }}>Conquistar exige superar sus defensas; saquear roba comida y oro con menos riesgo.</div>
+            </div>
+          );
+        })()}
         {civ.isPlayer && <div class="muted" style={{ fontSize: 13, marginTop: 10 }}>La población ociosa recolecta alimento en las casillas libres. Construye vivienda antes de que llegue el hacinamiento.</div>}
       </>
     );
@@ -195,7 +217,7 @@ export function TileCard() {
   return (
     <aside class="tilecard" aria-label={title}>
       <div class="head">
-        {owner && <Emblem index={owner.emblem} color={owner.color} color2={owner.color2} size={30} />}
+        {st && owner ? <Thumb id={`settlement:${settlementTier(st.pop)}`} color={owner.color} color2={owner.color2} size={56} /> : t.b && owner ? <Thumb id={t.b.type} color={owner.color} color2={owner.color2} size={56} /> : owner && <Emblem index={owner.emblem} color={owner.color} color2={owner.color2} size={30} />}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div class="eyebrow">{kicker}</div>
           <h3>{title}</h3>

@@ -188,6 +188,8 @@ export interface Civ {
   startCol: number;
   startRow: number;
   collapseYears: number;
+  gp?: Record<string, number>; // puntos de personajes ilustres
+  greats?: { name: string; type: string; year: number }[];
 }
 
 export interface Ledger {

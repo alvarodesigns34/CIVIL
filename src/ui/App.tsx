@@ -12,6 +12,7 @@ import { TechPanel } from './panels/TechPanel';
 import { GovPanel } from './panels/GovPanel';
 import { DiploPanel } from './panels/DiploPanel';
 import { ChroniclePanel } from './panels/ChroniclePanel';
+import { ObjectiveCard, Minimap, PausedBadge } from './Extras';
 
 function MapView() {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -50,6 +51,9 @@ export function App() {
       <Rail />
       {!(mobile && panelOpen) && <Alerts />}
       {!(mobile && panelOpen) && <TileCard />}
+      {!ctrl.overlay.selected && ctrl.overlay.mode === 'select' && !(mobile && panelOpen) && <ObjectiveCard />}
+      {!panelOpen && <Minimap />}
+      {ctrl.overlay.mode === 'select' && !(mobile && (panelOpen || ctrl.overlay.selected)) && <PausedBadge />}
       <ModeBar />
       <Panel />
       <Toasts />

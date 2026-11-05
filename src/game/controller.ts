@@ -1,0 +1,656 @@
+// Controlador de partida: bucle de tiempo, entrada, acciones del jugador y guardado.
+import type { GameState, PendingEvent, ResId } from '../sim/types';
+import { Renderer, type Overlay } from '../render/renderer';
+import { yearTick, type YearReport } from '../sim/game';
+import { generateWorld, type NewGameOpts } from '../sim/worldgen';
+import { notify } from './store';
+import { RNG } from '../core/rng';
+import { BUILDING } from '../data/buildings';
+import { TECH } from '../data/techs';
+import { canBuildAt, startBuild, cancelBuild, togglePause, sendColonists, canColonize, sendScout, fortify, hurry, marketTrade } from '../sim/actions';
+import { buildingYield, placeCtx, progressResearch, simulateEconomy } from '../sim/economy';
+import { encodeExplored, getExplored, settlementById, tileAt, capitalOf, reveal } from '../sim/world';
+import { queueEvent, EVENT, makeCtx, getChoices, applyChoice, choiceAvailable } from '../sim/events';
+import { adoptPolicy, canAdoptPolicy, changeGovernment, govChangeCost, revokePolicy } from '../sim/politics';
+import { doDiplo } from '../sim/diplomacy';
+import { advanceScouts } from '../sim/actions';
+import { AMBITIONS } from '../data/ambitions';
+import { sfx } from './audio';
+
+export const SPEEDS = [0, 3.2, 1.7, 0.85, 0.35]; // segundos por año
+const SAVE_KEY = 'civengine.save.v1';
+const SETTINGS_KEY = 'civengine.settings.v1';
+
+export interface Toast {
+  id: number;
+  title: string;
+  text?: string;
+  tone: 'good' | 'bad' | 'info' | 'tech' | 'war';
+  at: number;
+}
+
+export interface Settings {
+  reducedMotion: boolean;
+  sound: boolean;
+  autoPauseEvents: boolean;
+}
+
+export class Controller {
+  state!: GameState;
+  renderer!: Renderer;
+  canvas!: HTMLCanvasElement;
+  speed = 1;
+  paused = true;
+  acc = 0;
+  last = 0;
+  running = false;
+  overlay: Overlay = { selected: null, hover: null, buildPreview: null, colonyPreview: null, mode: 'select', yearFrac: 0, reducedMotion: false };
+  buildType: string | null = null;
+  toasts: Toast[] = [];
+  toastId = 1;
+  panel: string | null = null;
+  lastResult: { title: string; lines: string[] } | null = null;
+  settings: Settings = { reducedMotion: false, sound: true, autoPauseEvents: true };
+  screen: 'title' | 'game' = 'title';
+  lastReport: YearReport | null = null;
+  pendingConfirm: [number, number] | null = null; // confirmación de construcción en táctil
+  isTouch = false;
+  needCenter = true;
+  keysBound = false;
+
+  constructor() {
+    try {
+      const s = localStorage.getItem(SETTINGS_KEY);
+      if (s) this.settings = { ...this.settings, ...JSON.parse(s) };
+    } catch {}
+    this.overlay.reducedMotion = this.settings.reducedMotion || matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this.isTouch = matchMedia('(pointer: coarse)').matches;
+  }
+
+  saveSettings() {
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(this.settings)); } catch {}
+    this.overlay.reducedMotion = this.settings.reducedMotion;
+    notify();
+  }
+
+  get player() {
+    return this.state.civs[this.state.player];
+  }
+
+  bound = new WeakSet<HTMLCanvasElement>();
+  attach(canvas: HTMLCanvasElement) {
+    this.canvas = canvas;
+    if (this.renderer) {
+      this.renderer.canvas = canvas;
+      this.renderer.g = canvas.getContext('2d', { alpha: false })!;
+      if (this.renderer.state !== this.state) this.renderer.setState(this.state);
+    } else {
+      this.renderer = new Renderer(canvas, this.state);
+    }
+    if (!this.bound.has(canvas)) {
+      this.bound.add(canvas);
+      this.bindInput(canvas);
+    }
+    const ro = new ResizeObserver(() => this.resize());
+    ro.observe(canvas.parentElement!);
+    this.resize();
+    const cap = capitalOf(this.state, this.state.player);
+    if (cap && this.needCenter) {
+      this.renderer.centerOn(cap.col, cap.row, 1.25, true);
+      this.needCenter = false;
+    }
+    if (!this.running) {
+      this.running = true;
+      this.last = performance.now();
+      requestAnimationFrame(this.frame);
+    }
+  }
+
+  resize() {
+    const p = this.canvas.parentElement!;
+    this.renderer.resize(p.clientWidth, p.clientHeight);
+  }
+
+  newGame(opts: NewGameOpts) {
+    this.state = generateWorld(opts);
+    this.afterLoad();
+    primeLedgers(this.state);
+    const cap = capitalOf(this.state, this.state.player)!;
+    this.renderer?.setState(this.state);
+    this.renderer?.centerOn(cap.col, cap.row, 1.25, true);
+    this.needCenter = true;
+    this.state.chronicle.push({ year: 1, civ: this.state.player, kind: 'world', important: true, text: `Los ${this.player.people} encendieron su primer fuego en ${cap.name}. Así empezó su historia.` });
+    this.paused = true;
+    this.speed = 1;
+    this.screen = 'game';
+    queueEvent(this.state, this.player, 'sys_intro', cap.id);
+    this.toast('Tu pueblo despierta', 'Elige qué investigar y empieza a construir. Pulsa ▶ para que corra el tiempo.', 'info');
+    notify();
+  }
+
+  afterLoad() {
+    this.overlay.selected = null;
+    this.overlay.mode = 'select';
+    this.buildType = null;
+    this.panel = null;
+    this.toasts = [];
+  }
+
+  hasSave() {
+    try { return !!localStorage.getItem(SAVE_KEY); } catch { return false; }
+  }
+  saveInfo(): { year: number; name: string } | null {
+    try {
+      const raw = localStorage.getItem(SAVE_KEY + '.meta');
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  }
+  save(silent = false) {
+    if (!this.state) return;
+    try {
+      encodeExplored(this.state);
+      localStorage.setItem(SAVE_KEY, JSON.stringify(this.state));
+      localStorage.setItem(SAVE_KEY + '.meta', JSON.stringify({ year: this.state.year, name: this.player.name, cal: this.state.calendarStart }));
+      if (!silent) this.toast('Partida guardada', undefined, 'info');
+    } catch (e) {
+      this.toast('No se pudo guardar', 'El almacenamiento del navegador no está disponible.', 'bad');
+    }
+  }
+  load(): boolean {
+    try {
+      const raw = localStorage.getItem(SAVE_KEY);
+      if (!raw) return false;
+      const s = JSON.parse(raw) as GameState;
+      // los modificadores permanentes se guardaron con números grandes; nada que convertir
+      this.state = s;
+      this.afterLoad();
+      this.renderer?.setState(s);
+      const cap = capitalOf(s, s.player);
+      if (cap) this.renderer?.centerOn(cap.col, cap.row, 1.2, true);
+      this.needCenter = true;
+      this.paused = true;
+      this.screen = 'game';
+      notify();
+      return true;
+    } catch (e) {
+      console.error(e);
+      return false;
+    }
+  }
+
+  toast(title: string, text?: string, tone: Toast['tone'] = 'info') {
+    this.toasts.push({ id: this.toastId++, title, text, tone, at: performance.now() });
+    if (this.toasts.length > 4) this.toasts.shift();
+    notify();
+  }
+
+  // ───────────── Bucle
+  frame = (now: number) => {
+    const dt = Math.max(0, Math.min(0.1, (now - this.last) / 1000));
+    this.last = now;
+    if (this.state && this.screen === 'game' && this.renderer) {
+      const blocking = this.blockingEvent();
+      if (!this.paused && !blocking && !this.state.gameOver && this.speed > 0) {
+        const spy = SPEEDS[this.speed];
+        this.acc += dt;
+        advanceScouts(this.state, dt / spy);
+        if (this.acc >= spy) {
+          this.acc -= spy;
+          this.tick();
+        }
+        this.overlay.yearFrac = Math.min(0.999, this.acc / spy);
+      }
+      this.renderer.draw(dt, this.overlay);
+      // caducidad de avisos
+      const before = this.toasts.length;
+      this.toasts = this.toasts.filter((t) => now - t.at < 6500);
+      if (this.toasts.length !== before) notify();
+    }
+    requestAnimationFrame(this.frame);
+  };
+
+  blockingEvent(): PendingEvent | null {
+    if (!this.state) return null;
+    return this.state.events.pending.find((p) => p.civ === this.state.player) ?? null;
+  }
+
+  tick() {
+    const s = this.state;
+    const p = this.player;
+    const prevWars = new Set(Object.entries(p.relations).filter(([, r]) => r.state === 'war').map(([k]) => k));
+    const prevSettlements = s.settlements.filter((x) => x.civ === p.id).length;
+    const report = yearTick(s);
+    this.lastReport = report;
+    // exploración pasiva alrededor del territorio propio
+    for (const st of s.settlements) if (st.civ === p.id && st.pop > 0) reveal(s, st.col, st.row, st.radius + 2);
+    for (const t of report.techs) {
+      if (t.civ === p.id) {
+        this.toast(`Descubierto: ${TECH[t.id].name}`, TECH[t.id].desc, 'tech');
+        sfx('tech', this.settings);
+      }
+    }
+    for (const a of report.ambitions) {
+      const def = AMBITIONS.find((x) => x.id === a)!;
+      this.toast(`Ambición cumplida: ${def.name}`, `+${def.legacy} de legado`, 'good');
+      sfx('good', this.settings);
+    }
+    if (report.traditionReady) this.toast('Nueva tradición disponible', 'Tu cultura ha madurado: elige una tradición.', 'good');
+    for (const [k, r] of Object.entries(p.relations)) {
+      if (r.state === 'war' && !prevWars.has(k)) {
+        this.toast('¡Guerra!', `Estáis en guerra con ${s.civs[+k].name}.`, 'war');
+        sfx('war', this.settings);
+      }
+    }
+    const nowS = s.settlements.filter((x) => x.civ === p.id).length;
+    if (nowS < prevSettlements) this.toast('Hemos perdido un asentamiento', undefined, 'bad');
+    if (!p.research && this.state.year % 6 === 0) {
+      // recordatorio suave
+    }
+    if (s.year - s.lastAutosave >= 10) {
+      s.lastAutosave = s.year;
+      this.save(true);
+    }
+    if (this.blockingEvent()) sfx('event', this.settings);
+    if (s.gameOver) {
+      this.paused = true;
+      this.save(true);
+    }
+    // recalcular vista previa
+    if (this.overlay.mode === 'build' && this.buildType) this.computeBuildPreview();
+    notify();
+  }
+
+  setSpeed(n: number) {
+    if (n === 0) this.paused = true;
+    else {
+      this.speed = n;
+      this.paused = false;
+    }
+    notify();
+  }
+  togglePause() {
+    this.paused = !this.paused;
+    notify();
+  }
+
+  // ───────────── Entrada
+  bindInput(canvas: HTMLCanvasElement) {
+    const pointers = new Map<number, { x: number; y: number }>();
+    let dragDist = 0;
+    let pinchD = 0;
+    let downAt = 0;
+    canvas.addEventListener('pointerdown', (e) => {
+      canvas.setPointerCapture(e.pointerId);
+      pointers.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+      dragDist = 0;
+      downAt = performance.now();
+      if (pointers.size === 2) {
+        const [a, b] = [...pointers.values()];
+        pinchD = Math.hypot(a.x - b.x, a.y - b.y);
+      }
+      if (e.pointerType !== 'mouse') this.isTouch = true;
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      const p = pointers.get(e.pointerId);
+      if (!p) {
+        if (e.pointerType === 'mouse') {
+          const h = this.renderer.pick(e.offsetX, e.offsetY);
+          const hv = this.overlay.hover;
+          if (!h || !hv || h[0] !== hv[0] || h[1] !== hv[1]) {
+            this.overlay.hover = h;
+            if (this.overlay.mode !== 'select') notify();
+          }
+        }
+        return;
+      }
+      const dx = e.offsetX - p.x, dy = e.offsetY - p.y;
+      p.x = e.offsetX;
+      p.y = e.offsetY;
+      if (pointers.size === 1) {
+        dragDist += Math.abs(dx) + Math.abs(dy);
+        if (dragDist > 6) this.renderer.cam.pan(dx, dy);
+      } else if (pointers.size === 2) {
+        const [a, b] = [...pointers.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (pinchD > 0) this.renderer.cam.zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, d / pinchD);
+        pinchD = d;
+        dragDist = 99;
+      }
+    });
+    const up = (e: PointerEvent) => {
+      const had = pointers.has(e.pointerId);
+      pointers.delete(e.pointerId);
+      if (!had) return;
+      if (pointers.size === 0 && dragDist <= 6 && performance.now() - downAt < 600) this.onTap(e.offsetX, e.offsetY, e.pointerType !== 'mouse');
+      if (pointers.size < 2) pinchD = 0;
+    };
+    canvas.addEventListener('pointerup', up);
+    canvas.addEventListener('pointercancel', (e) => pointers.delete(e.pointerId));
+    canvas.addEventListener('pointerleave', () => { this.overlay.hover = null; });
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const f = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015));
+      this.renderer.cam.zoomAt(e.offsetX, e.offsetY, f);
+    }, { passive: false });
+    canvas.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      this.cancelMode();
+    });
+    if (this.keysBound) return;
+    this.keysBound = true;
+    window.addEventListener('keydown', (e) => {
+      if (this.screen !== 'game' || (e.target as HTMLElement)?.tagName === 'INPUT') return;
+      const cam = this.renderer.cam;
+      const step = 60;
+      switch (e.key) {
+        case ' ': e.preventDefault(); if (!this.blockingEvent()) this.togglePause(); break;
+        case '1': case '2': case '3': case '4': this.setSpeed(+e.key); break;
+        case 'Escape': this.cancelMode(); this.panel = null; this.overlay.selected = null; notify(); break;
+        case 'ArrowLeft': case 'a': cam.pan(step, 0); break;
+        case 'ArrowRight': case 'd': cam.pan(-step, 0); break;
+        case 'ArrowUp': case 'w': cam.pan(0, step); break;
+        case 'ArrowDown': case 's': cam.pan(0, -step); break;
+        case '+': case '=': cam.zoomAt(cam.vw / 2, cam.vh / 2, 1.2); break;
+        case '-': cam.zoomAt(cam.vw / 2, cam.vh / 2, 1 / 1.2); break;
+        case 'b': this.panel = this.panel === 'build' ? null : 'build'; notify(); break;
+        case 't': this.panel = this.panel === 'tech' ? null : 'tech'; notify(); break;
+        case 'g': this.panel = this.panel === 'gov' ? null : 'gov'; notify(); break;
+      }
+    });
+  }
+
+  onTap(sx: number, sy: number, touch: boolean) {
+    const hex = this.renderer.pick(sx, sy);
+    if (!hex) return;
+    const [c, r] = hex;
+    const s = this.state;
+    if (!getExplored(s)[r * s.width + c]) {
+      if (this.overlay.mode === 'scout') this.tryScout(c, r);
+      return;
+    }
+    if (this.overlay.mode === 'build' && this.buildType) {
+      // En táctil: primer toque selecciona, segundo confirma
+      if (touch && !(this.pendingConfirm && this.pendingConfirm[0] === c && this.pendingConfirm[1] === r)) {
+        this.pendingConfirm = [c, r];
+        this.overlay.selected = [c, r];
+        this.overlay.hover = [c, r];
+        notify();
+        return;
+      }
+      this.tryBuild(c, r);
+      return;
+    }
+    if (this.overlay.mode === 'colony') {
+      if (touch && !(this.pendingConfirm && this.pendingConfirm[0] === c && this.pendingConfirm[1] === r)) {
+        this.pendingConfirm = [c, r];
+        this.overlay.selected = [c, r];
+        this.overlay.hover = [c, r];
+        notify();
+        return;
+      }
+      this.tryColony(c, r);
+      return;
+    }
+    if (this.overlay.mode === 'scout') {
+      this.tryScout(c, r);
+      return;
+    }
+    this.overlay.selected = [c, r];
+    sfx('tap', this.settings);
+    notify();
+  }
+
+  // ───────────── Modos
+  enterBuild(type: string) {
+    this.buildType = type;
+    this.overlay.mode = 'build';
+    this.pendingConfirm = null;
+    this.computeBuildPreview();
+    if (this.isTouch) this.panel = null;
+    notify();
+  }
+  enterColony() {
+    this.overlay.mode = 'colony';
+    this.buildType = null;
+    this.pendingConfirm = null;
+    const s = this.state;
+    const m = new Map<number, boolean>();
+    const ex = getExplored(s);
+    for (let i = 0; i < s.tiles.length; i++) {
+      if (!ex[i]) continue;
+      const c = i % s.width, r = Math.floor(i / s.width);
+      const why = canColonize(s, this.player, c, r);
+      if (!why || why === 'Recursos insuficientes' || why.startsWith('Ningún')) m.set(i, !why || true);
+    }
+    this.overlay.colonyPreview = m;
+    if (this.isTouch) this.panel = null;
+    notify();
+  }
+  enterScout() {
+    this.overlay.mode = 'scout';
+    this.buildType = null;
+    if (this.isTouch) this.panel = null;
+    this.toast('Elige un destino', 'Toca cualquier punto del mapa, explorado o no.', 'info');
+    notify();
+  }
+  cancelMode() {
+    this.overlay.mode = 'select';
+    this.buildType = null;
+    this.overlay.buildPreview = null;
+    this.overlay.colonyPreview = null;
+    this.pendingConfirm = null;
+    notify();
+  }
+
+  computeBuildPreview() {
+    const s = this.state;
+    const def = BUILDING[this.buildType!];
+    const civ = this.player;
+    const m = new Map<number, { ok: boolean; label?: string; good?: boolean }>();
+    const vals: number[] = [];
+    const entries: [number, number, string][] = [];
+    for (let i = 0; i < s.tiles.length; i++) {
+      const t = s.tiles[i];
+      if (t.owner !== civ.id) continue;
+      const c = i % s.width, r = Math.floor(i / s.width);
+      const why = canBuildAt(s, civ, def, c, r);
+      if (why) continue;
+      const st = settlementById(s, t.sid)!;
+      const y = buildingYield(def, placeCtx(s, civ, st, c, r));
+      const main = Object.entries(y.out).sort((a, b) => (b[1] as number) - (a[1] as number))[0];
+      let label = '';
+      let v = 0;
+      if (main) {
+        v = (main[1] as number) * y.mult;
+        label = `+${Math.round(v)}`;
+      } else if (def.housing) {
+        v = def.housing;
+        label = `+${def.housing} hogar`;
+      } else if (def.stability) label = `+${def.stability} est.`;
+      vals.push(v);
+      entries.push([i, v, label]);
+    }
+    const best = Math.max(0, ...vals);
+    for (const [i, v, label] of entries) m.set(i, { ok: true, label, good: best > 0 && v >= best * 0.85 });
+    this.overlay.buildPreview = m;
+  }
+
+  // ───────────── Acciones
+  tryBuild(c: number, r: number) {
+    const err = startBuild(this.state, this.player, this.buildType!, c, r);
+    if (err) {
+      this.toast('No se puede construir', err, 'bad');
+      sfx('error', this.settings);
+    } else {
+      sfx('build', this.settings);
+      this.overlay.selected = [c, r];
+      this.pendingConfirm = null;
+      const def = BUILDING[this.buildType!];
+      // seguir en modo construcción para colocar varios (salvo maravillas/únicos)
+      if (def.wonder || def.perSettlement || def.perCiv || this.isTouch) this.cancelMode();
+      else this.computeBuildPreview();
+    }
+    notify();
+  }
+  tryColony(c: number, r: number) {
+    const err = sendColonists(this.state, this.player, c, r, new RNG(this.state.rng ^ 0x5bd1));
+    if (err) {
+      this.toast('No se puede fundar aquí', err, 'bad');
+      sfx('error', this.settings);
+    } else {
+      this.toast('Los colonos se ponen en marcha', 'Fundarán un nuevo asentamiento en unos años.', 'good');
+      sfx('build', this.settings);
+      this.cancelMode();
+    }
+    notify();
+  }
+  tryScout(c: number, r: number) {
+    const err = sendScout(this.state, this.player, c, r);
+    if (err) {
+      this.toast('Expedición imposible', err, 'bad');
+      sfx('error', this.settings);
+    } else {
+      this.toast('Los exploradores parten', undefined, 'good');
+      this.cancelMode();
+    }
+    notify();
+  }
+  cancelBuilding(c: number, r: number) {
+    cancelBuild(this.state, this.player, c, r);
+    notify();
+  }
+  pauseBuilding(c: number, r: number) {
+    togglePause(this.state, this.player, c, r);
+    notify();
+  }
+  hurryBuilding(c: number, r: number) {
+    const err = hurry(this.state, this.player, c, r);
+    if (err) this.toast('No se puede acelerar', err, 'bad');
+    else sfx('build', this.settings);
+    notify();
+  }
+  upgrade(c: number, r: number, to: string) {
+    this.buildType = to;
+    const err = startBuild(this.state, this.player, to, c, r);
+    this.buildType = null;
+    if (err) this.toast('No se puede mejorar', err, 'bad');
+    else sfx('build', this.settings);
+    notify();
+  }
+  fortify(sid: number) {
+    const st = settlementById(this.state, sid);
+    if (!st) return;
+    const err = fortify(this.state, this.player, st);
+    if (err) this.toast('No se puede fortificar', err, 'bad');
+    else { this.toast(`${st.name} refuerza sus defensas`, undefined, 'good'); sfx('build', this.settings); }
+    notify();
+  }
+  research(id: string) {
+    this.player.research = id;
+    progressResearch(this.state, this.player);
+    notify();
+  }
+  chooseTradition(id: string) {
+    const p = this.player;
+    if (!p.traditionOffer?.includes(id)) return;
+    p.traditions.push(id);
+    p.traditionOffer = null;
+    this.state.chronicle.push({ year: this.state.year, civ: p.id, kind: 'culture', text: `Los ${p.people} abrazaron una nueva tradición.` });
+    sfx('good', this.settings);
+    notify();
+  }
+  adopt(id: string) {
+    const why = canAdoptPolicy(this.player, id);
+    if (why) return this.toast('No se puede adoptar', why, 'bad');
+    adoptPolicy(this.state, this.player, id);
+    sfx('good', this.settings);
+    notify();
+  }
+  revoke(id: string) {
+    revokePolicy(this.state, this.player, id);
+    notify();
+  }
+  setGovernment(id: string) {
+    const cost = govChangeCost(this.player);
+    if (this.player.res.influence < cost) return this.toast('Influencia insuficiente', `Necesitas ${cost}.`, 'bad');
+    this.player.res.influence -= cost;
+    changeGovernment(this.state, this.player, id);
+    sfx('good', this.settings);
+    notify();
+  }
+  diplo(other: number, action: string) {
+    const res = doDiplo(this.state, this.player, this.state.civs[other], action, new RNG((this.state.rng ^ (other * 7919) ^ action.length * 31 ^ Math.floor(performance.now()))));
+    this.toast(res.ok ? 'Diplomacia' : 'Respuesta', res.msg, res.ok ? 'good' : 'bad');
+    notify();
+  }
+  trade(res: ResId, amount: number) {
+    const err = marketTrade(this.state, this.player, res, amount);
+    if (err) this.toast('Mercado', err, 'bad');
+    else sfx('coin', this.settings);
+    notify();
+  }
+  toggleDefensive() {
+    this.player.flags.defensive = this.player.flags.defensive ? 0 : 1;
+    notify();
+  }
+
+  resolveEvent(pe: PendingEvent, idx: number) {
+    const s = this.state;
+    const def = EVENT[pe.id];
+    const civ = s.civs[pe.civ];
+    const ctx = makeCtx(s, civ, pe.sid, pe.other, pe.data ?? {});
+    const choices = getChoices(def, ctx);
+    const ch = choices[idx];
+    if (!ch || !choiceAvailable(ch, ctx)) return;
+    s.events.pending = s.events.pending.filter((p) => p !== pe);
+    const lines = applyChoice(s, ctx, ch, new RNG(s.rng ^ (pe.uid * 2654435761)));
+    s.rng = (s.rng + 0x9e37) >>> 0;
+    if (lines.length) this.lastResult = { title: ch.label, lines };
+    sfx('tap', this.settings);
+    notify();
+  }
+
+  focusSettlement(id: number) {
+    const st = settlementById(this.state, id);
+    if (!st) return;
+    this.renderer.centerOn(st.col, st.row, Math.max(1.1, this.renderer.cam.zoom));
+    this.overlay.selected = [st.col, st.row];
+    if (this.isTouch) this.panel = null;
+    notify();
+  }
+  focusTile(c: number, r: number) {
+    this.renderer.centerOn(c, r);
+    this.overlay.selected = [c, r];
+    notify();
+  }
+}
+
+// Calcula la contabilidad inicial sin avanzar el tiempo (para que la interfaz arranque con datos reales)
+function primeLedgers(state: GameState) {
+  const clone: GameState = structuredClone(state);
+  for (const c of clone.civs) simulateEconomy(clone, c);
+  for (const c of state.civs) c.ledger = clone.civs[c.id].ledger;
+  for (const st of state.settlements) {
+    const k = clone.settlements.find((x) => x.id === st.id)!;
+    Object.assign(st, { housing: k.housing, workforce: k.workforce, jobs: k.jobs, employed: k.employed, health: k.health, growth: k.growth });
+  }
+}
+
+export const ctrl = new Controller();
+(window as any).__ctrl = ctrl;
+if (import.meta.env.DEV) {
+  // Ayudas de depuración: dejar que la IA juegue por el jugador durante N años
+  (window as any).__autoplay = async (years: number) => {
+    const { aiYear } = await import('../sim/ai');
+    for (let i = 0; i < years && !ctrl.state.gameOver; i++) {
+      const p = ctrl.player;
+      aiYear(ctrl.state, p, new RNG(ctrl.state.rng + i));
+      if (p.traditionOffer) { p.traditions.push(p.traditionOffer[0]); p.traditionOffer = null; }
+      for (const pe of [...ctrl.state.events.pending]) ctrl.resolveEvent(pe, 0);
+      ctrl.lastResult = null;
+      ctrl.tick();
+    }
+    notify();
+  };
+}
+export { tileAt };

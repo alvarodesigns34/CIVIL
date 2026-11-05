@@ -4,6 +4,8 @@ import type { Effect, EventChoice, EventCtx, EventDef } from './eventTypes';
 import { EVENTS } from '../data/events';
 import { SYSTEM_EVENTS } from './systemEvents';
 import { GREAT_EVENT } from '../data/greats';
+import { RELIGION_EVENTS } from '../data/doctrines';
+import { CRISIS_EVENT } from '../data/crisisEvents';
 import { RNG } from '../core/rng';
 import { civEra } from '../data/techs';
 import { civSettlements, capitalOf, settlementById, tileAt, nbrTiles } from './world';
@@ -17,7 +19,7 @@ import { isWater } from '../data/terrain';
 import { tilesOfSettlement } from './world';
 import { RES_NAME } from './names';
 
-export const ALL_EVENTS: EventDef[] = [...EVENTS, ...SYSTEM_EVENTS, GREAT_EVENT];
+export const ALL_EVENTS: EventDef[] = [...EVENTS, ...SYSTEM_EVENTS, GREAT_EVENT, ...RELIGION_EVENTS, CRISIS_EVENT];
 export const EVENT: Record<string, EventDef> = Object.fromEntries(ALL_EVENTS.map((e) => [e.id, e]));
 
 export function makeCtx(state: GameState, civ: Civ, sid: number, other: number, data: Record<string, number | string> = {}): EventCtx {

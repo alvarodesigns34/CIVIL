@@ -381,6 +381,7 @@ export function simulateEconomy(state: GameState, civ: Civ) {
   civ.knowledge += Math.max(0, L.net.knowledge);
   // Cultura: tradiciones y fronteras
   civ.culturePts += Math.max(0, L.net.culture);
+  civ.cultureTotal = (civ.cultureTotal ?? 0) + Math.max(0, L.net.culture);
 
   // Fronteras
   const cultPer = L.net.culture * (1 + fx.borders);

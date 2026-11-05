@@ -259,7 +259,34 @@ export function generateWorld(opts: NewGameOpts): GameState {
     civ.startCol = starts[i][0];
     civ.startRow = starts[i][1];
     state.civs.push(civ);
-    foundSettlement(state, rng, civ, starts[i][0], starts[i][1], 50, true);
+    foundSettlement(state, rng, civ, starts[i][0], starts[i][1], 50, true).origCapital = true;
+  }
+  // Pueblos menores: ciudades-estado lejos de los grandes pueblos
+  const nMinor = opts.size === 'small' ? 2 : opts.size === 'normal' ? 3 : 4;
+  const kinds = ['merchant', 'culture', 'military'];
+  const MINOR_COLORS: [string, string][] = [['#8a7a5a', '#2a2119'], ['#5a6a7a', '#efe4c8'], ['#7a5a6a', '#efe4c8'], ['#6a7a5a', '#efe4c8']];
+  for (let m = 0; m < nMinor; m++) {
+    let spot: [number, number] | null = null;
+    for (let k = 0; k < 400 && !spot; k++) {
+      const c = rng.int(3, W - 4), r = rng.int(3, H - 4);
+      if (startScore(state, c, r, temp) < 6) continue;
+      if (state.settlements.some((x) => hexDistance(x.col, x.row, c, r) < 7)) continue;
+      spot = [c, r];
+    }
+    if (!spot) continue;
+    const id = state.civs.length;
+    const culture = rng.pick(CULTURES).id;
+    const civ = createCiv(state, rng, id, false, culture, 0, rng.int(0, 11), 'peaceful', '');
+    civ.color = MINOR_COLORS[m % MINOR_COLORS.length][0];
+    civ.color2 = MINOR_COLORS[m % MINOR_COLORS.length][1];
+    civ.minor = kinds[m % kinds.length];
+    civ.envoys = {};
+    civ.startCol = spot[0];
+    civ.startRow = spot[1];
+    state.civs.push(civ);
+    const st = foundSettlement(state, rng, civ, spot[0], spot[1], 40, true);
+    civ.name = st.name;
+    civ.people = civ.people;
   }
   for (const a of state.civs) for (const b of state.civs) if (a !== b) a.relations[b.id] = newRelation();
 

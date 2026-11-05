@@ -7,6 +7,7 @@ import { calendarYear } from '../../sim/names';
 import { rankings, MAX_YEARS } from '../../sim/game';
 import { fmt, cls } from '../util';
 import { PanelShell } from './PanelShell';
+import { victoryProgress } from '../../sim/victory';
 
 export function ChroniclePanel() {
   const [tab, setTab] = useState('chron');
@@ -16,7 +17,7 @@ export function ChroniclePanel() {
   const entries = s.chronicle.filter((e) => (filter === 'mine' ? e.civ === p.id || (e.civ === -1 && e.important) : e.civ === p.id || e.civ === -1 || p.relations[e.civ]?.met)).slice(-160).reverse();
   const lb = legacyBreakdown(s, p);
   return (
-    <PanelShell title="Crónica" sub={`Año ${s.year} de ${MAX_YEARS}. La historia que tu pueblo deja escrita.`} tabs={[{ id: 'chron', label: 'Anales' }, { id: 'legacy', label: 'Legado' }, { id: 'world', label: 'El mundo' }]} tab={tab} onTab={setTab}>
+    <PanelShell title="Crónica" sub={`Año ${s.year} de ${MAX_YEARS}. La historia que tu pueblo deja escrita.`} tabs={[{ id: 'chron', label: 'Anales' }, { id: 'victory', label: 'Victoria' }, { id: 'legacy', label: 'Legado' }, { id: 'world', label: 'El mundo' }]} tab={tab} onTab={setTab}>
       {tab === 'chron' && (
         <>
           <div class="seg" style={{ marginBottom: 12 }}>
@@ -60,7 +61,33 @@ export function ChroniclePanel() {
         </>
       )}
       {tab === 'world' && <World />}
+      {tab === 'victory' && <Victory />}
     </PanelShell>
+  );
+}
+
+function Victory() {
+  const s = ctrl.state;
+  const p = ctrl.player;
+  const mine = victoryProgress(s, p);
+  const rivals = s.civs.filter((c) => c.alive && !c.minor && c.id !== p.id && p.relations[c.id]?.met);
+  const types = mine.filter((v) => v.name);
+  return (
+    <>
+      <div class="muted" style={{ fontSize: 13.5, marginBottom: 10 }}>Hay cinco caminos hacia la gloria. Si nadie gana antes, tras 900 años vence el mayor legado.</div>
+      {types.map((v) => {
+        const best = rivals.map((r) => ({ r, v: victoryProgress(s, r).find((x) => x.id === v.id)!.v })).sort((a, b) => b.v - a.v)[0];
+        return (
+          <div class="card" key={v.id}>
+            <div class="row" style={{ justifyContent: 'space-between' }}><h4>{v.name}</h4><span class="num muted" style={{ fontSize: 13 }}>{fmt(v.v)} / {fmt(v.max)}</span></div>
+            <div class="desc">{v.desc}</div>
+            <div class="vbar"><span>Tú</span><div class="bar"><i style={{ width: `${Math.min(100, (v.v / v.max) * 100)}%`, background: p.color }} /></div></div>
+            {best && <div class="vbar"><span>{best.r.name}</span><div class="bar"><i style={{ width: `${Math.min(100, (best.v / v.max) * 100)}%`, background: best.r.color }} /></div></div>}
+          </div>
+        );
+      })}
+      <div class="card"><h4>Legado</h4><div class="desc">Año {s.year} de {MAX_YEARS}. Consulta la pestaña Legado.</div></div>
+    </>
   );
 }
 

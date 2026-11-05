@@ -24,6 +24,7 @@ import { civEra } from '../data/techs';
 import type { Unit } from '../sim/types';
 import { stepMilitary, deathLog, campLog, unitsAt, hostile, canEnter, orderMove, disband, recruit } from '../sim/military';
 import { UNIT } from '../data/units';
+import { sendEnvoy } from '../sim/minors';
 import { LEVELS, canSpecialize, specialize, appointGovernor, type SpecDef } from '../sim/cities';
 import { settlementAt } from '../sim/world';
 import { isWater } from '../data/terrain';
@@ -627,6 +628,13 @@ export class Controller {
     if (this.player.res.influence < 15) return this.toast('Influencia insuficiente', 'Nombrar un gobernador cuesta 15.', 'bad');
     appointGovernor(this.state, this.player, settlementById(this.state, sid)!, g);
     sfx('good', this.settings);
+    notify();
+  }
+  envoy(mid: number, kind: 'envoy' | 'gift') {
+    const m = this.state.civs[mid];
+    const err = sendEnvoy(this.state, this.player, m, kind);
+    if (err) { this.toast('No es posible', err, 'bad'); sfx('error', this.settings); }
+    else { this.toast(kind === 'envoy' ? 'Emisarios enviados' : 'Regalo entregado', `${m.name}: amistad ${Math.round(m.envoys?.[this.player.id] ?? 0)}`, 'good'); sfx('coin', this.settings); }
     notify();
   }
   recruit(sid: number, type: string) {

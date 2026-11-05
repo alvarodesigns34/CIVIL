@@ -8,13 +8,15 @@ import { civEra, ERAS } from '../../data/techs';
 import { GOV, TRAIT } from '../../data/politics';
 import { fmt, sgn, cls, attitude, PERSONALITY_NAME } from '../util';
 import { PanelShell } from './PanelShell';
+import { MINOR_INFO, minorStanding, FRIEND, ALLY } from '../../sim/minors';
 
 export function DiploPanel() {
   const s = ctrl.state;
   const p = ctrl.player;
-  const known = s.civs.filter((o) => o.id !== p.id && p.relations[o.id]?.met);
+  const known = s.civs.filter((o) => o.id !== p.id && !o.minor && p.relations[o.id]?.met);
+  const minors = s.civs.filter((o) => o.minor && p.relations[o.id]?.met);
   const [open, setOpen] = useState<number | null>(known[0]?.id ?? null);
-  const unknown = s.civs.filter((o) => o.id !== p.id && !p.relations[o.id]?.met && o.alive).length;
+  const unknown = s.civs.filter((o) => o.id !== p.id && !o.minor && !p.relations[o.id]?.met && o.alive).length;
   return (
     <PanelShell title="Pueblos" sub={`${known.length} pueblos conocidos${unknown ? ` · ${unknown} por descubrir` : ''}. Tu fuerza militar: ${fmt(p.strength)}.`}>
       {!known.length && (
@@ -91,6 +93,41 @@ export function DiploPanel() {
           </div>
         );
       })}
+      {minors.length > 0 && (
+        <div class="section">
+          <span class="eyebrow">Ciudades-estado</span>
+          {minors.map((m) => {
+            const pts = m.envoys?.[p.id] ?? 0;
+            const st = minorStanding(m, p.id);
+            const info = MINOR_INFO[m.minor!];
+            const rivals = Object.entries(m.envoys ?? {}).filter(([k]) => +k !== p.id).sort((a, b) => b[1] - a[1])[0];
+            const atWar = p.relations[m.id]?.state === 'war';
+            return (
+              <div key={m.id} class={cls('card', !m.alive && 'locked')}>
+                <div class="row" style={{ gap: 10 }}>
+                  <Emblem index={m.emblem} color={m.color} color2={m.color2} size={30} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <h4>{m.name}</h4>
+                    <div class="muted" style={{ fontSize: 13 }}>{info.name}{st !== 'none' ? ` · ${st === 'ally' ? 'Aliada' : 'Amiga'}` : ''}{atWar ? ' · en guerra' : ''}</div>
+                  </div>
+                </div>
+                <div class="bar" style={{ marginTop: 8 }}>
+                  <i style={{ width: `${Math.min(100, (pts / 120) * 100)}%`, background: st === 'ally' ? 'var(--good)' : 'var(--gold)' }} />
+                  <b style={{ left: `${(FRIEND / 120) * 100}%` }} /><b style={{ left: `${(ALLY / 120) * 100}%` }} />
+                </div>
+                <div class="muted" style={{ fontSize: 12.5, marginTop: 4 }}>Amistad: {info.friend}. Alianza: {info.ally}.{rivals ? ` Compite: ${s.civs[+rivals[0]]?.name} (${Math.round(rivals[1])}).` : ''}</div>
+                {m.alive && !atWar && (
+                  <div class="actions">
+                    <button class="btn small" disabled={p.res.influence < 10} onClick={() => ctrl.envoy(m.id, 'envoy')}>Enviar emisarios · 10 infl.</button>
+                    <button class="btn small ghost" onClick={() => ctrl.envoy(m.id, 'gift')}>Regalo de oro</button>
+                    <button class="btn small ghost" onClick={() => { const c = capitalOf(s, m.id); if (c) ctrl.focusTile(c.col, c.row); }}><Icon name="pin" /></button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </PanelShell>
   );
 }

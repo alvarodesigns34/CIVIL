@@ -2,6 +2,8 @@ import type { Civ, GameState, ModFx, FactionId } from './types';
 import { TECH } from '../data/techs';
 import { GOV, POLICY, TRADITION, TRAIT, WONDER_FX } from '../data/politics';
 import { CULTURE_TRAIT, SPEC } from './cities';
+import { religionFx } from './religion';
+import { crisisFx, bronzeFx } from './crises';
 
 export interface FxSource {
   label: string;
@@ -32,6 +34,10 @@ export function fxSources(state: GameState, civ: Civ): FxSource[] {
   for (const [w, owner] of Object.entries(state.wonders)) {
     if (owner === civ.id && WONDER_FX[w]) out.push({ label: 'Maravilla', fx: WONDER_FX[w] });
   }
+  // Crisis mundiales
+  out.push(...crisisFx(state), ...bronzeFx(state, civ.techs));
+  // Religión
+  out.push(...religionFx(state, civ));
   // Rasgo de la cultura
   const ct = CULTURE_TRAIT[civ.culture];
   if (ct) out.push({ label: ct.name, fx: ct.fx });

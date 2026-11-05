@@ -293,6 +293,7 @@ export function siteScore(state: GameState, c: number, r: number) {
 }
 
 function aiExpand(state: GameState, civ: Civ, rng: RNG) {
+  if (civ.minor) return;
   const sets = civSettlements(state, civ.id);
   const maxS = civ.personality === 'expansionist' ? 9 : civ.personality === 'aggressive' ? 6 : 5;
   if (sets.length >= maxS || state.colonists.some((c) => c.civ === civ.id)) return;
@@ -321,6 +322,7 @@ function aiFortify(state: GameState, civ: Civ, rng: RNG) {
 }
 
 function aiDiplomacy(state: GameState, civ: Civ, rng: RNG) {
+  if (civ.minor) return;
   const player = state.civs[state.player];
   for (const o of state.civs) {
     if (o === civ || !o.alive) continue;

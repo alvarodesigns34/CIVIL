@@ -65,6 +65,11 @@ export interface Settlement {
   fort: number; // nivel de murallas 0..3
   defHp?: number;
   level?: number; // prosperidad 0..5
+  religion?: number; // fundador de la religión que sigue
+  plague?: number; // años de plaga restantes
+  immune?: number;
+  origCapital?: boolean;
+  relPressure?: Record<number, number>;
   lowYears?: number;
   spec?: string; // especialización
   specYear?: number;
@@ -222,6 +227,10 @@ export interface Civ {
   startRow: number;
   collapseYears: number;
   garrison?: number; // fuerza de guarnición (edificios militares)
+  minor?: string; // pueblo menor: 'merchant' | 'culture' | 'military'
+  faithPts?: number;
+  envoys?: Record<number, number>; // influencia acumulada de otras civs (pueblos menores)
+  cultureTotal?: number;
   gp?: Record<string, number>; // puntos de personajes ilustres
   greats?: { name: string; type: string; year: number }[];
 }

@@ -9,6 +9,10 @@ import { yearlyGreatPeople } from './greatPeople';
 import { yearlyCities, LEVELS } from './cities';
 import { yearlyWar, checkElimination } from './war';
 import { yearlyMilitary } from './military';
+import { yearlyReligion } from './religion';
+import { yearlyMinors } from './minors';
+import { yearlyCrises } from './crises';
+import { checkVictories } from './victory';
 import { updateContacts, yearlyDiplomacy } from './diplomacy';
 import { aiYear } from './ai';
 import { rollEvents, queueEvent, fire, EVENT } from './events';
@@ -114,6 +118,10 @@ export function yearTick(state: GameState): YearReport {
   advanceColonists(state, rng);
   yearlyWar(state, rng);
   yearlyMilitary(state, rng);
+  yearlyReligion(state, rng);
+  yearlyMinors(state, rng);
+  yearlyCrises(state, rng);
+  checkVictories(state);
   updateContacts(state, rng);
   yearlyDiplomacy(state, rng);
   for (const civ of state.civs) if (civ.alive && !civ.isPlayer) aiYear(state, civ, rng);
@@ -138,7 +146,7 @@ export function yearTick(state: GameState): YearReport {
 
   // Fin por tiempo o conquista
   if (!state.gameOver) {
-    const alive = state.civs.filter((c) => c.alive);
+    const alive = state.civs.filter((c) => c.alive && !c.minor);
     if (alive.length === 1 && alive[0].isPlayer) state.gameOver = { won: true, reason: 'Tu civilización es la única que perdura.', year: state.year };
     else if (state.year >= MAX_YEARS) {
       const ranking = rankings(state);
@@ -157,6 +165,7 @@ export function yearTick(state: GameState): YearReport {
 
 export function rankings(state: GameState) {
   return state.civs
+    .filter((civ) => !civ.minor)
     .map((civ) => ({ civ, score: civ.alive ? legacyBreakdown(state, civ).total : Math.round(civ.legacy * 0.5) }))
     .sort((a, b) => b.score - a.score);
 }

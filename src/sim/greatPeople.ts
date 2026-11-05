@@ -38,6 +38,7 @@ export function gpRates(state: GameState, civ: Civ): Record<GPType, number> {
 }
 
 export function yearlyGreatPeople(state: GameState, civ: Civ, rng: RNG) {
+  if (civ.minor) return;
   civ.gp ??= {};
   civ.greats ??= [];
   const rates = gpRates(state, civ);

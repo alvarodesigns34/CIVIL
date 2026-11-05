@@ -915,6 +915,16 @@ export class Renderer {
           g.fillStyle = '#d9b48c'; g.beginPath(); g.arc(x, y - 4.4, 0.9, 0, Math.PI * 2); g.fill();
         }
       }
+    // Plaga: miasma verdosa
+    for (const st of s.settlements) {
+      if (!(st.plague ?? 0) || !ex[st.row * s.width + st.col]) continue;
+      const [x, y] = hexToPixel(st.col, st.row);
+      for (let k = 0; k < 4; k++) {
+        const a = t * 0.4 + k * 1.6;
+        g.fillStyle = 'rgba(120,150,60,0.16)';
+        g.beginPath(); g.ellipse(x + Math.cos(a) * 14, y - 4 + Math.sin(a) * 6, 16, 8, 0, 0, Math.PI * 2); g.fill();
+      }
+    }
     // Asedios: humo y fuego en ciudades sitiadas
     for (const st of s.settlements) {
       if (st.siege <= 0 || !ex[st.row * s.width + st.col]) continue;
@@ -1068,6 +1078,18 @@ export class Renderer {
       g.fillStyle = '#6b5b48';
       g.font = `600 ${fs - 2}px "Alegreya Sans", sans-serif`;
       g.fillText(popTxt, lx + 16 + nw, y + 1);
+      if (st.religion != null && st.religion >= 0 && s.civs[st.religion]) {
+        // fe de la ciudad: pequeño sello del color de su fundador
+        g.fillStyle = s.civs[st.religion].color;
+        g.beginPath(); g.arc(lx + w - 3, ly + 3, 4.2, 0, Math.PI * 2); g.fill();
+        g.strokeStyle = '#f3ead6'; g.lineWidth = 1.2; g.stroke();
+        g.fillStyle = '#f3ead6'; g.fillRect(lx + w - 3.6, ly + 0.6, 1.2, 4.8); g.fillRect(lx + w - 5.2, ly + 2, 4.4, 1.2);
+      }
+      if ((st.plague ?? 0) > 0) {
+        g.fillStyle = '#5a7a2a';
+        g.font = `700 ${fs - 3}px "Alegreya Sans", sans-serif`;
+        g.fillText('PLAGA', lx, ly - 7);
+      }
       if (st.siege > 0) {
         g.fillStyle = '#b4432a';
         g.font = `700 ${fs - 2}px "Alegreya Sans", sans-serif`;

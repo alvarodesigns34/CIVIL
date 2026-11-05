@@ -8,6 +8,7 @@ import { factionUnlocked, traditionCost } from '../../sim/economy';
 import { canAdoptPolicy, govChangeCost } from '../../sim/politics';
 import { describeFxObj, describeEffects, makeCtx } from '../../sim/events';
 import { DECREES } from '../../data/decrees';
+import { religionOf, civReligion, religions, foundCost, faithIncome, maxReligions, DOCTRINE } from '../../sim/religion';
 import { capitalOf } from '../../sim/world';
 import { RES_COLOR } from '../Icon';
 import { fmt, sgn, cls } from '../util';
@@ -19,13 +20,14 @@ export function GovPanel() {
   const p = ctrl.player;
   const [tab, setTab] = useState(p.traditionOffer ? 'traditions' : 'leader');
   return (
-    <PanelShell title="Gobierno" sub={`${GOV[p.government].name} · estabilidad ${Math.round(p.stability)}`} tabs={[{ id: 'leader', label: 'Líder' }, { id: 'decrees', label: 'Decretos' }, { id: 'factions', label: 'Facciones' }, { id: 'laws', label: 'Leyes' }, { id: 'regime', label: 'Régimen' }, { id: 'traditions', label: p.traditionOffer ? 'Tradiciones •' : 'Tradiciones' }, { id: 'greats', label: 'Ilustres' }]} tab={tab} onTab={setTab}>
+    <PanelShell title="Gobierno" sub={`${GOV[p.government].name} · estabilidad ${Math.round(p.stability)}`} tabs={[{ id: 'leader', label: 'Líder' }, { id: 'decrees', label: 'Decretos' }, { id: 'factions', label: 'Facciones' }, { id: 'laws', label: 'Leyes' }, { id: 'regime', label: 'Régimen' }, { id: 'traditions', label: p.traditionOffer ? 'Tradiciones •' : 'Tradiciones' }, { id: 'faith', label: 'Fe' }, { id: 'greats', label: 'Ilustres' }]} tab={tab} onTab={setTab}>
       {tab === 'leader' && <Leader />}
       {tab === 'factions' && <Factions />}
       {tab === 'laws' && <Laws />}
       {tab === 'regime' && <Regime />}
       {tab === 'traditions' && <Traditions />}
       {tab === 'greats' && <Greats />}
+      {tab === 'faith' && <Faith />}
       {tab === 'decrees' && <Decrees />}
     </PanelShell>
   );
@@ -229,6 +231,52 @@ function Traditions() {
           <div class="kv" key={id}><span class="k"><b>{TRADITION[id].name}</b></span><span class="v" style={{ fontWeight: 500, fontSize: 13 }}>{TRADITION[id].desc}</span></div>
         ))}
       </div>
+    </>
+  );
+}
+
+function Faith() {
+  const s = ctrl.state;
+  const p = ctrl.player;
+  const own = religionOf(s, p.id);
+  const maj = civReligion(s, p);
+  const rels = religions(s);
+  const cost = foundCost(s);
+  const inc = faithIncome(s, p);
+  return (
+    <>
+      {own ? (
+        <div class="card" style={{ borderColor: 'var(--gold)' }}>
+          <div class="eyebrow">Fundada en el año {own.year}</div>
+          <h4 style={{ fontSize: 20 }}>{own.name}</h4>
+          <div class="pills">{own.doctrines.map((d) => <span key={d} class="pill good">{DOCTRINE[d]?.name}: {DOCTRINE[d]?.desc}</span>)}</div>
+          <div class="kv" style={{ marginTop: 8 }}><span class="k">Ciudades fieles en el mundo</span><span class="v">{s.settlements.filter((x) => x.religion === p.id).length}</span></div>
+          {own.doctrines.length < 2 && <div class="kv"><span class="k">Concilio (segunda doctrina)</span><span class="v">{fmt(p.faithPts ?? 0)} / 120</span></div>}
+        </div>
+      ) : (
+        <div class="card">
+          <h4>Aún no tenéis una fe propia</h4>
+          <div class="desc">{p.techs.includes('mysticism') ? (rels.length >= maxReligions(s) ? 'Ya existen todas las grandes religiones del mundo. Podéis adoptar una ajena: se difunde sola desde las ciudades vecinas.' : 'Los santuarios, templos y megalitos generan fe. Al reunir suficiente, fundaréis una religión con su propia doctrina.') : 'Descubre el Misticismo para que nazcan los primeros cultos.'}</div>
+          {p.techs.includes('mysticism') && rels.length < maxReligions(s) && (
+            <>
+              <div class="bar" style={{ marginTop: 8 }}><i style={{ width: `${Math.min(100, ((p.faithPts ?? 0) / cost) * 100)}%`, background: 'var(--gold)' }} /></div>
+              <div class="muted num" style={{ fontSize: 13, marginTop: 4 }}>{fmt(p.faithPts ?? 0)} / {fmt(cost)} de fe · +{inc.toFixed(1)} al año</div>
+            </>
+          )}
+        </div>
+      )}
+      {maj && maj.founder !== p.id && <div class="card"><div class="eyebrow">Fe mayoritaria de tu pueblo</div><h4>{maj.name}</h4><div class="desc">Recibís la mitad de sus doctrinas. Fundada por {s.civs[maj.founder]?.name}.</div></div>}
+      <div class="section">
+        <span class="eyebrow">Religiones del mundo ({rels.length}/{maxReligions(s)})</span>
+        {rels.map((r) => {
+          const n = s.settlements.filter((x) => x.religion === r.founder).length;
+          return (
+            <div key={r.founder} class="kv"><span class="k"><b>{r.name}</b> · {s.civs[r.founder]?.name} · {r.doctrines.map((d) => DOCTRINE[d]?.name).join(', ')}</span><span class="v">{n} ciudades</span></div>
+          );
+        })}
+        {!rels.length && <div class="muted">Ninguna todavía.</div>}
+      </div>
+      <div class="muted" style={{ fontSize: 13, marginTop: 10 }}>La fe se difunde de ciudad en ciudad, más rápido por rutas comerciales y desde capitales santas. Compartir fe mejora la opinión entre pueblos; tener ciudades de otra fe resta estabilidad.</div>
     </>
   );
 }

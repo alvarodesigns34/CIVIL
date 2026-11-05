@@ -7,6 +7,7 @@ import { civFx } from './mods';
 import { queueEvent } from './events';
 import { GOV } from '../data/politics';
 import { setDeclareWar } from './systemEvents';
+import { civReligion } from './religion';
 
 export function rel(a: Civ, b: Civ) {
   return a.relations[b.id];
@@ -31,6 +32,8 @@ export function opinionTarget(state: GameState, holder: Civ, other: Civ): { v: n
   if (r.state === 'alliance') parts.push({ label: 'Aliados', v: 25 });
   if (r.state === 'war') parts.push({ label: 'En guerra', v: -50 });
   if (holder.government === other.government) parts.push({ label: 'Gobierno similar', v: 6 });
+  const rh = civReligion(state, holder), ro = civReligion(state, other);
+  if (rh && ro) parts.push(rh.founder === ro.founder ? { label: `Comparten la ${rh.name}`, v: 12 } : { label: 'Otra fe', v: rh.doctrines.includes('tolerant') ? 0 : -6 });
   const border = sharedBorder(state, holder, other);
   if (border > 0) parts.push({ label: 'Fronteras en disputa', v: -Math.min(20, border * (holder.personality === 'expansionist' ? 3 : 1.5)) });
   // Enemigos comunes

@@ -5,6 +5,7 @@ import { civSettlements } from '../sim/world';
 import { civEra } from '../data/techs';
 import { fmt } from './util';
 import { BUILDING } from '../data/buildings';
+import { crises, CRISIS_INFO } from '../sim/crises';
 
 interface Alert { id: string; tone: 'bad' | 'warn' | 'good'; text: string; icon: string; go: () => void }
 
@@ -39,6 +40,8 @@ export function Alerts() {
   }
   // obras paradas por falta de recursos no aplica; asentamiento asediado
   for (const st of sets) if (st.siege > 0) out.push({ id: 's' + st.id, tone: 'bad', icon: 'shield', text: `${st.name} está sitiada`, go: () => ctrl.focusSettlement(st.id) });
+  for (const cr of crises(s)) if (cr.until > s.year) out.unshift({ id: 'cr' + cr.id, tone: 'bad', icon: 'warn', text: `${CRISIS_INFO[cr.id].name} (${cr.until - s.year} años)`, go: open('chronicle') });
+  for (const st of sets) if ((st.plague ?? 0) > 0) { out.push({ id: 'pl' + st.id, tone: 'bad', icon: 'health', text: `Plaga en ${st.name}`, go: () => ctrl.focusSettlement(st.id) }); break; }
   void BUILDING;
   if (!out.length) return null;
   return (

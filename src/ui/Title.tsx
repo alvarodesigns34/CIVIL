@@ -24,18 +24,30 @@ function Backdrop() {
     for (let i = 0; i < 140; i++) yearTick(st);
     getExplored(st).fill(1);
     const r = new Renderer(canvas, st);
-    const resize = () => r.resize(canvas.parentElement!.clientWidth, canvas.parentElement!.clientHeight);
+    // Encaja el mundo para que cubra siempre toda la pantalla (iPad vertical incluido)
+    const fit = () => {
+      const c = r.cam;
+      c.zoom = Math.max(1.05, (c.vw / c.worldW) * 1.08, (c.vh / c.worldH) * 1.08);
+    };
+    const resize = () => { r.resize(canvas.parentElement!.clientWidth, canvas.parentElement!.clientHeight); fit(); };
     resize();
     window.addEventListener('resize', resize);
     const cap = capitalOf(st, st.civs.find((c) => c.alive)!.id)!;
-    r.centerOn(cap.col, cap.row, 1.05, true);
+    r.centerOn(cap.col, cap.row, r.cam.zoom, true);
+    const x0 = r.cam.x, y0 = r.cam.y;
     let raf = 0, last = performance.now(), t = 0;
     const loop = (now: number) => {
       const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
       last = now;
       t += dt;
-      r.cam.x += dt * 9;
-      r.cam.y += Math.sin(t * 0.1) * dt * 4;
+      // deriva lenta en vaivén, sin salirse nunca del mapa
+      const c = r.cam;
+      const mx = c.vw / 2 / c.zoom, my = c.vh / 2 / c.zoom;
+      const tx = x0 + Math.sin(t * 0.035) * 260, ty = y0 + Math.sin(t * 0.05) * 60;
+      c.x = Math.max(mx, Math.min(c.worldW - mx, tx));
+      c.y = Math.max(my, Math.min(c.worldH - my, ty));
+      if (mx * 2 >= c.worldW) c.x = c.worldW / 2;
+      if (my * 2 >= c.worldH) c.y = c.worldH / 2;
       r.draw(dt, { selected: null, hover: null, buildPreview: null, colonyPreview: null, mode: 'select', yearFrac: (t / 12) % 1, reducedMotion: false });
       raf = requestAnimationFrame(loop);
     };
@@ -66,7 +78,10 @@ export function Title() {
       <div class="title-veil" />
       <div class="title-inner">
         <div class="title-mark">
-          <div class="eyebrow">Una crónica de pueblos, siglos y decisiones</div>
+          <div class="logo">
+            <Emblem index={0} color="#b4432a" color2="#f1d9a8" size={58} />
+            <div class="eyebrow">Una crónica de pueblos, siglos y decisiones</div>
+          </div>
           <h1>Civilization <em>Engine</em></h1>
           <p>Guía a un puñado de familias desde el primer fuego hasta el umbral de la era industrial. Cada cosecha, cada ley y cada guerra quedarán escritas en tu crónica.</p>
         </div>
@@ -91,8 +106,12 @@ export function Title() {
               </div>
               <div class="field">
                 <label>Cultura</label>
-                <div class="seg">{Object.entries(CULTURE_LABEL).map(([k, v]) => <button key={k} class={cls(culture === k && 'on')} onClick={() => setCulture(k)}>{v}</button>)}</div>
-                <div class="muted" style={{ fontSize: 13.5, marginTop: 6 }}><b>{CULTURE_TRAIT[culture].name}:</b> {CULTURE_TRAIT[culture].desc}</div>
+                <div class="culture-grid">{Object.entries(CULTURE_LABEL).map(([k, v]) => (
+                  <button key={k} class={cls('culture-card', culture === k && 'on')} onClick={() => setCulture(k)}>
+                    <b>{v}</b>
+                    <span>{CULTURE_TRAIT[k].desc}</span>
+                  </button>
+                ))}</div>
               </div>
               <div class="field" style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
                 <div style={{ flex: 1 }}>

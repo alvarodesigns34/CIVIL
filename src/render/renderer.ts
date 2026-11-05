@@ -146,6 +146,7 @@ export class Renderer {
         g.drawImage(cv, cx * CHUNK_W, cy * CHUNK_H, CHUNK_W + 1.5 / z, CHUNK_H + 1.5 / z);
       }
 
+    this.drawFrame(g);
     const ex = getExplored(s);
     const c0 = Math.max(0, Math.floor(wx0 / HEX_W) - 1), c1 = Math.min(s.width - 1, Math.ceil(wx1 / HEX_W) + 1);
     const r0 = Math.max(0, Math.floor(wy0 / ROW_H) - 1), r1 = Math.min(s.height - 1, Math.ceil(wy1 / ROW_H) + 2);
@@ -273,8 +274,26 @@ export class Renderer {
     else if (ov.hover) this.hexOutline(g, ov.hover[0], ov.hover[1], 'rgba(255,250,220,0.45)', 1.5);
     if (ov.selected) {
       const pulse = 0.6 + Math.sin(this.time * 4) * 0.25;
-      this.hexOutline(g, ov.selected[0], ov.selected[1], `rgba(226,192,68,${pulse})`, 3.5);
-      this.hexOutline(g, ov.selected[0], ov.selected[1], 'rgba(42,33,25,0.8)', 1);
+      const [sx, sy] = hexToPixel(ov.selected[0], ov.selected[1]);
+      hexPath(g, sx, sy, HEX_SIZE - 1);
+      g.fillStyle = `rgba(255,235,170,${0.12 + pulse * 0.08})`;
+      g.fill();
+      this.hexOutline(g, ov.selected[0], ov.selected[1], 'rgba(42,33,25,0.55)', 1.2);
+      // esquinas doradas que respiran
+      const cs = hexCorners(sx, sy, HEX_SIZE + 1.5 + Math.sin(this.time * 4) * 1.2);
+      g.strokeStyle = '#e2c044';
+      g.lineWidth = 3 / Math.max(0.6, z);
+      g.lineCap = 'round';
+      for (let k = 0; k < 6; k++) {
+        const [x, y] = cs[k];
+        const [x1, y1] = cs[(k + 1) % 6];
+        const [x0, y0] = cs[(k + 5) % 6];
+        g.beginPath();
+        g.moveTo(x + (x0 - x) * 0.22, y + (y0 - y) * 0.22);
+        g.lineTo(x, y);
+        g.lineTo(x + (x1 - x) * 0.22, y + (y1 - y) * 0.22);
+        g.stroke();
+      }
     }
 
     // Nubes y tinte estacional
@@ -314,6 +333,54 @@ export class Renderer {
     g.strokeStyle = color;
     g.lineWidth = w / Math.max(0.5, this.cam.zoom);
     g.stroke();
+  }
+
+  // Marco de mapa antiguo: doble filete, ornamentos en las esquinas y rosa de los vientos
+  drawFrame(g: CanvasRenderingContext2D) {
+    const W = this.cam.worldW, H = this.cam.worldH;
+    const m = 34;
+    g.save();
+    g.strokeStyle = 'rgba(60,40,20,0.75)';
+    g.lineWidth = 3;
+    g.strokeRect(-m, -m, W + m * 2, H + m * 2);
+    g.strokeStyle = 'rgba(160,120,50,0.6)';
+    g.lineWidth = 1.2;
+    g.strokeRect(-m + 7, -m + 7, W + m * 2 - 14, H + m * 2 - 14);
+    // graduación como en las cartas náuticas
+    g.fillStyle = 'rgba(60,40,20,0.55)';
+    for (let x = -m + 7; x < W + m - 7; x += 40) g.fillRect(x, -m, 20, 7), g.fillRect(x, H + m - 7, 20, 7);
+    for (let y = -m + 7; y < H + m - 7; y += 40) g.fillRect(-m, y, 7, 20), g.fillRect(W + m - 7, y, 7, 20);
+    // esquinas
+    for (const [cx, cy] of [[-m, -m], [W + m, -m], [-m, H + m], [W + m, H + m]]) {
+      g.fillStyle = '#5a3f22';
+      g.beginPath(); g.arc(cx, cy, 13, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#c9a23a';
+      g.beginPath(); g.arc(cx, cy, 7, 0, Math.PI * 2); g.fill();
+    }
+    // rosa de los vientos
+    const rx = W - 120, ry = H - 120, R = 70;
+    g.globalAlpha = 0.55;
+    g.strokeStyle = '#4a3420';
+    g.lineWidth = 1.4;
+    g.beginPath(); g.arc(rx, ry, R * 0.62, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.arc(rx, ry, R * 0.7, 0, Math.PI * 2); g.stroke();
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2 - Math.PI / 2;
+      const len = i % 4 === 0 ? R : i % 2 === 0 ? R * 0.72 : R * 0.5;
+      const w = i % 4 === 0 ? 9 : 5;
+      g.fillStyle = i % 2 === 0 ? '#5a3f22' : '#c9a86a';
+      g.beginPath();
+      g.moveTo(rx + Math.cos(a) * len, ry + Math.sin(a) * len);
+      g.lineTo(rx + Math.cos(a + Math.PI / 2) * w, ry + Math.sin(a + Math.PI / 2) * w);
+      g.lineTo(rx + Math.cos(a - Math.PI / 2) * w, ry + Math.sin(a - Math.PI / 2) * w);
+      g.closePath(); g.fill(); g.stroke();
+    }
+    g.fillStyle = '#4a3420';
+    g.font = '700 18px "Fraunces Variable", Georgia, serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText('N', rx, ry - R - 14);
+    g.globalAlpha = 1;
+    g.restore();
   }
 
   drawWater(g: CanvasRenderingContext2D, c0: number, c1: number, r0: number, r1: number, ex: Uint8Array) {
@@ -410,7 +477,9 @@ export class Renderer {
         const path = this.routeBetween(cap, st);
         if (!path || path.length < 2) continue;
         if (!ex[st.row * s.width + st.col]) continue;
-        this.strokePath(g, path, 'rgba(110,80,45,0.5)', 3 / Math.max(0.8, z), [6, 5]);
+        this.strokePath(g, path, 'rgba(120,92,55,0.55)', 5.5, []);
+        this.strokePath(g, path, 'rgba(214,190,140,0.75)', 3.2, []);
+        this.strokePath(g, path, 'rgba(110,80,45,0.45)', 0.9, [2, 5]);
       }
     }
     // Rutas comerciales con caravanas
@@ -669,8 +738,16 @@ export class Renderer {
       g.fillStyle = 'rgba(40,40,60,0.06)';
       g.beginPath(); g.ellipse(c.x + 40, c.y + 60, c.r, c.r * 0.45, 0, 0, Math.PI * 2); g.fill();
       if (this.cam.zoom < 0.9) {
-        g.fillStyle = 'rgba(255,255,255,0.18)';
-        g.beginPath(); g.ellipse(c.x, c.y, c.r * 0.9, c.r * 0.38, 0, 0, Math.PI * 2); g.fill();
+        const a = Math.min(0.3, (0.9 - this.cam.zoom) * 0.6);
+        for (let k = 0; k < 5; k++) {
+          const ox = (k - 2) * c.r * 0.32, oy = Math.sin(k * 1.7) * c.r * 0.08;
+          const rr = c.r * (0.35 + (k % 2) * 0.12);
+          const grd = g.createRadialGradient(c.x + ox, c.y + oy - rr * 0.2, rr * 0.1, c.x + ox, c.y + oy, rr);
+          grd.addColorStop(0, `rgba(255,255,255,${a})`);
+          grd.addColorStop(1, 'rgba(255,255,255,0)');
+          g.fillStyle = grd;
+          g.beginPath(); g.ellipse(c.x + ox, c.y + oy, rr * 1.3, rr * 0.75, 0, 0, Math.PI * 2); g.fill();
+        }
       }
       void H;
     }

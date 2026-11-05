@@ -348,6 +348,34 @@ export class TerrainPainter {
       g.fillStyle = hp;
       g.fill();
     }
+    // Borde quemado: el pergamino se oscurece junto a lo conocido
+    for (const [c, r] of tiles) {
+      if (ex[r * s.width + c]) continue;
+      const [px, py] = hexToPixel(c, r);
+      const corners = hexCorners(px, py, HEX_SIZE + 1);
+      const ns = neighbors(c, r);
+      for (let d = 0; d < 6; d++) {
+        const [nc, nr] = ns[d];
+        if (nc < 0 || nr < 0 || nc >= s.width || nr >= s.height) continue;
+        if (!ex[nr * s.width + nc]) continue;
+        const [i0, i1] = DIR_EDGE[d];
+        const [ax, ay] = corners[i0], [bx, by] = corners[i1];
+        const mx = (ax + bx) / 2, my = (ay + by) / 2;
+        const ix = mx + (px - mx) * 0.7, iy = my + (py - my) * 0.7;
+        const grd = g.createLinearGradient(mx, my, ix, iy);
+        grd.addColorStop(0, 'rgba(70,40,15,0.5)');
+        grd.addColorStop(0.35, 'rgba(110,70,30,0.22)');
+        grd.addColorStop(1, 'rgba(110,70,30,0)');
+        g.fillStyle = grd;
+        g.beginPath();
+        g.moveTo(ax, ay);
+        g.lineTo(bx, by);
+        g.lineTo(px + (bx - px) * 0.25, py + (by - py) * 0.25);
+        g.lineTo(px + (ax - px) * 0.25, py + (ay - py) * 0.25);
+        g.closePath();
+        g.fill();
+      }
+    }
     // Borde de lo explorado: trazo de tinta irregular
     g.strokeStyle = 'rgba(80,60,35,0.55)';
     g.lineWidth = 1.4;

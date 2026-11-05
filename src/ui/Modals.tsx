@@ -9,6 +9,7 @@ import { rankings } from '../sim/game';
 import { calendarYear } from '../sim/names';
 import { fmt, cls } from './util';
 export { CodexPanel } from './Codex';
+import { PanelShell } from './panels/PanelShell';
 
 const CAT_NAME: Record<string, string> = {
   disaster: 'Desastre', society: 'Sociedad', politics: 'Política', religion: 'Religión', discovery: 'Descubrimiento', economy: 'Economía',
@@ -186,12 +187,7 @@ export function MenuPanel() {
   const st = ctrl.settings;
   const set = (k: keyof typeof st) => { (st as any)[k] = !st[k]; ctrl.saveSettings(); };
   return (
-    <section class="panel" role="dialog" aria-label="Menú">
-      <div class="panel-head">
-        <div><h2>Menú</h2><p>Partida, ajustes y controles.</p></div>
-        <button class="close" onClick={() => { ctrl.panel = null; notify(); }} aria-label="Cerrar"><Icon name="close" /></button>
-      </div>
-      <div class="panel-body scroll">
+    <PanelShell title="Menú" sub="Partida, ajustes y controles.">
         <span class="eyebrow">Partidas guardadas</span>
         {[0, 1, 2, 3].map((slot) => {
           const info = ctrl.saveInfo(slot);
@@ -262,7 +258,6 @@ export function MenuPanel() {
             <p style={{ margin: 0 }}>Investiga, adopta leyes, comercia, pacta o guerrea. La partida termina cuando alguien construye la máquina de vapor, cuando solo queda un pueblo o tras 900 años.</p>
           </div>
         </div>
-      </div>
-    </section>
+    </PanelShell>
   );
 }

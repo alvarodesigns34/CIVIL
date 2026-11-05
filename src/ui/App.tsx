@@ -48,6 +48,7 @@ export function App() {
   const panelOpen = !!ctrl.panel;
   const mobile = window.innerWidth <= 760;
   document.body.dataset.era = String(civEra(ctrl.player.techs));
+  document.body.classList.toggle('paused', ctrl.paused && !ctrl.blockingEvent());
   return (
     <>
       <MapView />

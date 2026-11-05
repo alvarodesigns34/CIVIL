@@ -40,55 +40,56 @@ export function TopBar() {
         <div class="identity">
           <Emblem index={p.emblem} color={p.color} color2={p.color2} size={30} />
           <button class="leader-btn" onClick={() => { ctrl.panel = 'gov'; sfx('open', ctrl.settings); notify(); }} title={`${p.leader.title} ${p.leader.name}`} aria-label="Ver al líder">
-            <Portrait leader={p.leader} color={p.color} size={36} />
+            <Portrait leader={p.leader} color={p.color} size={38} />
           </button>
-          <div>
+          <div class="idtext">
             <div class="name">{p.name}</div>
             <div class="sub">{GOV[p.government].name} · {p.leader.title} {p.leader.name}</div>
           </div>
         </div>
         <div class="res-strip">
-          <button class={cls('chip', open?.id === 'pop' && 'open')} onClick={(e) => toggle('pop', e as any)} title="Población y estabilidad">
-            <Icon name="pop" style={{ color: '#d9c7a0' }} />
-            <span class="v">{fmt(pop)}</span>
-            <Icon name="stability" style={{ color: p.stability < 30 ? '#f0907a' : p.stability > 70 ? '#9fcf86' : '#d9c7a0' }} />
-            <span class="v">{Math.round(p.stability)}</span>
+          <button class={cls('cart', open?.id === 'pop' && 'open')} onClick={(e) => toggle('pop', e as any)} title="Población y estabilidad">
+            <span class="disc" style={{ background: '#5a4a38' }}><Icon name="pop" /></span>
+            <span class="cv"><b class="num">{fmt(pop)}</b><i class={cls(p.stability < 30 ? 'neg' : p.stability > 70 ? 'pos' : '')}>estab. {Math.round(p.stability)}</i></span>
           </button>
           {show.map((r) => {
             const net = L.net[r] ?? 0;
             const cap = resCap(s, p, r);
             const warn = r === 'food' ? net < 0 && p.res.food < L.foodNeed * 0.5 : r === 'gold' && net < 0 && p.res.gold < 30;
+            const full = r !== 'gold' && r !== 'influence' && p.res[r] >= cap * 0.98;
             return (
-              <button key={r} class={cls('chip', open?.id === r && 'open', warn && 'warn')} onClick={(e) => toggle(r, e as any)} title={RES_TITLE[r]}>
-                <Icon name={r} style={{ color: RES_COLOR[r] }} />
-                <span class="v">{fmt(p.res[r])}</span>
-                {r === 'food' && <span class="cap num">/{fmt(cap)}</span>}
-                <span class={cls('d', net > 0.05 ? 'pos' : net < -0.05 ? 'neg' : '')}>{sgn(net)}</span>
+              <button key={r} class={cls('cart', open?.id === r && 'open', warn && 'warn')} onClick={(e) => toggle(r, e as any)} title={RES_TITLE[r]}>
+                <span class="disc" style={{ background: RES_COLOR[r] }}><Icon name={r} /></span>
+                <span class="cv">
+                  <b class="num">{fmt(p.res[r])}{full && <small> lleno</small>}</b>
+                  <i class={cls(net > 0.05 ? 'pos' : net < -0.05 ? 'neg' : '')}>{sgn(net)}/año</i>
+                </span>
               </button>
             );
           })}
-          <button class={cls('chip', open?.id === 'knowledge' && 'open')} onClick={(e) => { ctrl.panel = 'tech'; ctrl.overlay.selected = null; setOpen(null); notify(); void e; }} title="Investigación">
-            <Icon name="knowledge" style={{ color: RES_COLOR.knowledge }} />
-            {p.research ? (
-              <>
-                <span class="d" style={{ color: '#d9c7a0' }}>{TECH[p.research].name}</span>
-                <span class="progress-mini"><i style={{ width: `${Math.min(100, (p.knowledge / tCost) * 100)}%` }} /></span>
-              </>
-            ) : (
-              <span class="d neg">Elige investigación</span>
-            )}
-            <span class="d pos">{sgn(L.net.knowledge, 1)}</span>
+          <button class={cls('cart wide', open?.id === 'knowledge' && 'open', !p.research && 'warn')} onClick={(e) => { ctrl.panel = 'tech'; ctrl.overlay.selected = null; setOpen(null); notify(); void e; }} title="Investigación">
+            <span class="disc" style={{ background: RES_COLOR.knowledge }}><Icon name="knowledge" /></span>
+            <span class="cv">
+              <b class="tname">{p.research ? TECH[p.research].name : 'Elige investigación'}</b>
+              {p.research ? <span class="progress-mini"><em style={{ width: `${Math.min(100, (p.knowledge / tCost) * 100)}%` }} /></span> : <i class="neg">sin investigar</i>}
+            </span>
           </button>
-          <button class={cls('chip', open?.id === 'culture' && 'open')} onClick={(e) => toggle('culture', e as any)} title="Cultura">
-            <Icon name="culture" style={{ color: RES_COLOR.culture }} />
-            <span class="progress-mini"><i style={{ width: `${Math.min(100, (p.culturePts / traditionCost(p)) * 100)}%`, background: '#b67ac0' }} /></span>
-            <span class="d pos">{sgn(L.net.culture, 1)}</span>
+          <button class={cls('cart', open?.id === 'culture' && 'open')} onClick={(e) => toggle('culture', e as any)} title="Cultura">
+            <span class="disc" style={{ background: RES_COLOR.culture }}><Icon name="culture" /></span>
+            <span class="cv">
+              <span class="progress-mini"><em style={{ width: `${Math.min(100, (p.culturePts / traditionCost(p)) * 100)}%`, background: '#c58ad0' }} /></span>
+              <i class="pos">{sgn(L.net.culture, 1)}/año</i>
+            </span>
           </button>
         </div>
         <div class="timebox">
-          <div class="date">
-            <div class="y">{calendarYear(s.calendarStart, s.year)}</div>
-            <div class="e">{ERAS[era].name} · {SEASONS[season]}</div>
+          <div class="datebox">
+            <span class="era-medal" style={{ borderColor: ERAS[era].color }} title={ERAS[era].name}>{['I', 'II', 'III', 'IV', 'V', 'VI'][era]}</span>
+            <div class="date">
+              <div class="y num">{calendarYear(s.calendarStart, s.year)}</div>
+              <div class="e">{ERAS[era].name}</div>
+            </div>
+            <span class="season-dial" title={SEASONS[season]} style={{ ['--a' as any]: `${ctrl.overlay.yearFrac * 360}deg` }}><i /></span>
           </div>
           <div class="speed" role="group" aria-label="Velocidad">
             <button class={cls(ctrl.paused && 'on')} onClick={() => ctrl.setSpeed(0)} aria-label="Pausa" title="Pausa (espacio)"><Icon name="pause" /></button>

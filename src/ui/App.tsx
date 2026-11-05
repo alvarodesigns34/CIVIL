@@ -5,14 +5,15 @@ import { Title } from './Title';
 import { TopBar, Rail, Toasts } from './Hud';
 import { Alerts, ModeBar } from './Advisor';
 import { TileCard } from './TileCard';
-import { EventModal, ResultModal, GameOver, MenuPanel } from './Modals';
+import { EventModal, ResultModal, GameOver, MenuPanel, CodexPanel, ReportModal } from './Modals';
 import { BuildPanel } from './panels/BuildPanel';
 import { CitiesPanel } from './panels/CitiesPanel';
 import { TechPanel } from './panels/TechPanel';
 import { GovPanel } from './panels/GovPanel';
 import { DiploPanel } from './panels/DiploPanel';
 import { ChroniclePanel } from './panels/ChroniclePanel';
-import { ObjectiveCard, Minimap, PausedBadge } from './Extras';
+import { ObjectiveCard, Minimap, PausedBadge, LensBar } from './Extras';
+import { civEra } from '../data/techs';
 import { UnitCard } from './UnitCard';
 
 function MapView() {
@@ -36,6 +37,7 @@ function Panel() {
     case 'diplo': return <DiploPanel />;
     case 'chronicle': return <ChroniclePanel />;
     case 'menu': return <MenuPanel />;
+    case 'codex': return <CodexPanel />;
     default: return null;
   }
 }
@@ -45,6 +47,7 @@ export function App() {
   if (ctrl.screen === 'title' || !ctrl.state) return <Title />;
   const panelOpen = !!ctrl.panel;
   const mobile = window.innerWidth <= 760;
+  document.body.dataset.era = String(civEra(ctrl.player.techs));
   return (
     <>
       <MapView />
@@ -55,12 +58,14 @@ export function App() {
       {!(mobile && panelOpen) && <UnitCard />}
       {!ctrl.overlay.selected && !(ctrl.overlay.selectedUnits?.length) && ctrl.overlay.mode === 'select' && !(mobile && panelOpen) && <ObjectiveCard />}
       {!panelOpen && <Minimap />}
+      {!(mobile && panelOpen) && <LensBar />}
       {ctrl.overlay.mode === 'select' && !(mobile && (panelOpen || ctrl.overlay.selected)) && <PausedBadge />}
       <ModeBar />
       <Panel />
       <Toasts />
       <EventModal />
       <ResultModal />
+      <ReportModal />
       <GameOver />
     </>
   );

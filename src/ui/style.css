@@ -592,3 +592,35 @@ h1, h2, h3, h4 { font-family: var(--font-display); margin: 0; font-weight: 600; 
 .vbar { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 12.5px; }
 .vbar span { width: 90px; flex: none; color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vbar .bar { flex: 1; }
+
+/* ── Capas */
+.lensbar { position: fixed; z-index: 23; right: 12px; bottom: 200px; display: flex; flex-direction: column; gap: 4px; padding: 5px; border-radius: 12px; background: rgba(33, 26, 20, 0.88); box-shadow: var(--shadow-2); }
+.lensbar button { width: 52px; height: 48px; border-radius: 9px; color: var(--night-muted); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; font-size: 10px; font-weight: 700; }
+.lensbar button svg { width: 18px; height: 18px; }
+.lensbar button.on { background: var(--night-text); color: var(--night); }
+@media (max-width: 1100px) { .lensbar { bottom: 16px; } }
+@media (max-width: 760px) { .lensbar { bottom: auto; top: calc(var(--top-h) + env(safe-area-inset-top, 0px) + 96px); right: 8px; } .lensbar button { width: 44px; height: 42px; } .lensbar span { display: none; } }
+.logpop { right: 12px; left: auto !important; max-height: 70vh; overflow-y: auto; width: 360px; }
+.logrow { display: flex; gap: 10px; padding: 6px 0; border-bottom: 1px dashed var(--hairline); font-size: 13px; }
+.logrow > span { width: 32px; flex: none; text-align: right; padding-top: 1px; }
+
+/* ── Escala de la interfaz */
+:root { --ui-scale: 1; }
+.topbar, .rail, .panel, .tilecard, .toasts, .alerts, .objective, .modebar, .paused-badge, .pop, .lensbar, .modal { zoom: var(--ui-scale); }
+
+/* ── Estilo por era: el acento cambia con la época */
+body[data-era="1"] { --accent: #a8692c; --accent-ink: #84501d; --accent-quiet: rgba(168, 105, 44, 0.12); }
+body[data-era="2"] { --accent: #4a6a8a; --accent-ink: #34506d; --accent-quiet: rgba(74, 106, 138, 0.12); }
+body[data-era="3"] { --accent: #8b3a3a; --accent-ink: #6d2a2a; --accent-quiet: rgba(139, 58, 58, 0.12); }
+body[data-era="4"] { --accent: #2f4f8a; --accent-ink: #213a69; --accent-quiet: rgba(47, 79, 138, 0.12); }
+body[data-era="5"] { --accent: #6b3f63; --accent-ink: #522e4b; --accent-quiet: rgba(107, 63, 99, 0.12); }
+body[data-era="4"] .topbar { background: linear-gradient(#232a3a, #1a1f2b); }
+body[data-era="5"] .topbar { background: linear-gradient(#2e2230, #221a24); }
+body[data-era="1"] .topbar { background: linear-gradient(#30241a, #241b13); }
+.logpop { top: calc(var(--top-h) + env(safe-area-inset-top, 0px) + 8px); }
+.codex p { font-size: 15.5px; line-height: 1.65; max-width: 68ch; margin: 0 0 12px; color: var(--ink-2); }
+.codex-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
+.codex-grid .card + .card { margin-top: 0; }
+.report-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+.report-cell { background: var(--paper-raised); border: 1px solid var(--hairline); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 2px; }
+.report-cell svg { width: 18px; height: 18px; color: var(--accent); }

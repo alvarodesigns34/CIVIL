@@ -4,6 +4,7 @@ import { notify } from '../game/store';
 import { sfx } from '../game/audio';
 import { Icon, RES_COLOR } from './Icon';
 import { Emblem, Portrait } from './Emblem';
+import { LogPopover } from './Extras';
 import { fmt, sgn, cls } from './util';
 import type { ResId, YieldId } from '../sim/types';
 import { RES_TITLE, RES_DESC, calendarYear } from '../sim/names';
@@ -95,10 +96,12 @@ export function TopBar() {
             <button class={cls('opt', !ctrl.paused && ctrl.speed === 2 && 'on')} onClick={() => ctrl.setSpeed(2)} aria-label="Rápido" title="Rápido (2)"><Icon name="fast" /></button>
             <button class={cls(!ctrl.paused && ctrl.speed >= 3 && 'on')} onClick={() => ctrl.setSpeed(ctrl.speed === 3 && !ctrl.paused ? 4 : 3)} aria-label="Muy rápido" title="Muy rápido (3/4)"><Icon name="faster" /></button>
           </div>
+          <button class="icon-btn" onClick={(e) => toggle('log', e as any)} aria-label="Avisos"><Icon name="scroll" /></button>
           <button class="icon-btn" onClick={() => { ctrl.panel = ctrl.panel === 'menu' ? null : 'menu'; notify(); }} aria-label="Menú"><Icon name="menu" /></button>
         </div>
       </header>
-      {open && <ResPopover id={open.id} x={open.x} y={open.y} onClose={() => setOpen(null)} />}
+      {open && open.id === 'log' && <LogPopover onClose={() => setOpen(null)} />}
+      {open && open.id !== 'log' && <ResPopover id={open.id} x={open.x} y={open.y} onClose={() => setOpen(null)} />}
     </>
   );
 }

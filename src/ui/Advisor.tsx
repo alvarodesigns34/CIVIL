@@ -46,7 +46,7 @@ export function Alerts() {
   if (!out.length) return null;
   return (
     <div class="alerts">
-      {out.slice(0, 6).map((a) => (
+      {out.slice(0, window.innerWidth < 1300 ? 4 : 5).map((a) => (
         <button key={a.id} class={`alert ${a.tone}`} onClick={a.go}>
           <Icon name={a.icon} />
           <span>{a.text}</span>

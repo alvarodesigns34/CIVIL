@@ -5,7 +5,7 @@ import { sfx } from '../../game/audio';
 import { Icon } from '../Icon';
 import { cls } from '../util';
 
-const ICONS: Record<string, string> = { Construir: 'build', Territorio: 'cities', Saber: 'tech', Gobierno: 'gov', Pueblos: 'diplo', Crónica: 'chronicle', Menú: 'menu' };
+const ICONS: Record<string, string> = { Construir: 'build', Territorio: 'cities', Saber: 'tech', Gobierno: 'gov', Pueblos: 'diplo', Crónica: 'chronicle', Menú: 'menu', Códice: 'knowledge' };
 
 export function PanelShell({ title, sub, children, tabs, tab, onTab, wide, full }: {
   title: string; sub?: string; children: ComponentChildren; tabs?: { id: string; label: string }[]; tab?: string; onTab?: (t: string) => void; wide?: boolean; full?: boolean;

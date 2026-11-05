@@ -8,6 +8,7 @@ import { legacyBreakdown } from '../data/ambitions';
 import { rankings } from '../sim/game';
 import { calendarYear } from '../sim/names';
 import { fmt, cls } from './util';
+export { CodexPanel } from './Codex';
 
 const CAT_NAME: Record<string, string> = {
   disaster: 'Desastre', society: 'Sociedad', politics: 'Política', religion: 'Religión', discovery: 'Descubrimiento', economy: 'Economía',
@@ -89,6 +90,46 @@ export function ResultModal() {
   );
 }
 
+export function ReportModal() {
+  const r = ctrl.report;
+  if (!r || ctrl.blockingEvent()) return null;
+  const s = ctrl.state;
+  const p = ctrl.player;
+  const close = () => { ctrl.report = null; notify(); };
+  const items: [string, number, string][] = [
+    ['Población', r.d.pop, 'pop'], ['Ciudades', r.d.cities, 'cities'], ['Tecnologías', r.d.techs, 'tech'], ['Legado', r.d.legacy, 'trophy'],
+    ['Regimientos', r.d.units, 'sword'], ['Tradiciones', r.d.traditions, 'culture'], ['Ilustres', r.d.greats, 'star'],
+  ];
+  const moments = s.chronicle.filter((e) => e.year > r.from && e.year <= r.to && (e.civ === p.id || e.civ === -1) && e.important).slice(-6);
+  return (
+    <div class="scrim">
+      <div class="modal" style={{ width: 'min(560px,100%)' }}>
+        <div class="event-art" style={{ height: 120 }}><EventArt art="scroll" seed={r.to} /><div class="cat">Informe de la generación</div></div>
+        <div class="modal-body scroll">
+          <h2>{calendarYear(s.calendarStart, r.from)} – {calendarYear(s.calendarStart, r.to)}</h2>
+          <p class="lead">Así cambiaron los {p.people} en estos cincuenta años.</p>
+          <div class="report-grid">
+            {items.map(([label, v, icon]) => (
+              <div key={label} class="report-cell">
+                <Icon name={icon} />
+                <div class="num" style={{ fontSize: 20, fontWeight: 700 }}>{v > 0 ? '+' : ''}{fmt(v)}</div>
+                <div class="muted" style={{ fontSize: 12.5 }}>{label}</div>
+              </div>
+            ))}
+          </div>
+          {moments.length > 0 && (
+            <div class="section">
+              <span class="eyebrow">Lo que se recordará</span>
+              <div class="chron">{moments.map((e, i) => <div key={i} class="chron-item imp"><div class="y">{calendarYear(s.calendarStart, e.year)}</div><div>{e.text}</div></div>)}</div>
+            </div>
+          )}
+          <button class="btn accent" style={{ width: '100%', marginTop: 14 }} onClick={() => { close(); ctrl.setSpeed(ctrl.speed || 1); }}>Seguir escribiendo la historia</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function GameOver() {
   const s = ctrl.state;
   const go = s.gameOver;
@@ -151,11 +192,36 @@ export function MenuPanel() {
         <button class="close" onClick={() => { ctrl.panel = null; notify(); }} aria-label="Cerrar"><Icon name="close" /></button>
       </div>
       <div class="panel-body scroll">
-        <div class="grid2">
-          <button class="btn" onClick={() => ctrl.save()}><Icon name="save" /> Guardar</button>
-          <button class="btn ghost" onClick={() => { ctrl.load(); }}>Cargar</button>
+        <span class="eyebrow">Partidas guardadas</span>
+        {[0, 1, 2, 3].map((slot) => {
+          const info = ctrl.saveInfo(slot);
+          return (
+            <div class="kv" key={slot} style={{ alignItems: 'center' }}>
+              <span class="k">{slot === 0 ? 'Automática' : `Ranura ${slot}`}{info ? ` · ${info.name}, ${calendarYear(info.cal ?? -3500, info.year)}` : ' · vacía'}</span>
+              <span style={{ display: 'flex', gap: 6 }}>
+                {slot > 0 && <button class="btn small" onClick={() => { ctrl.save(false, slot); notify(); }}>Guardar</button>}
+                <button class="btn small ghost" disabled={!info} onClick={() => ctrl.load(slot)}>Cargar</button>
+              </span>
+            </div>
+          );
+        })}
+        <div class="grid2" style={{ marginTop: 8 }}>
+          <button class="btn ghost" onClick={() => {
+            const blob = new Blob([ctrl.exportSave()], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `civilization-engine-${ctrl.player.name}-${ctrl.state.year}.json`;
+            a.click();
+          }}>Exportar partida</button>
+          <label class="btn ghost" style={{ cursor: 'pointer' }}>
+            Importar partida
+            <input type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={async (e) => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) ctrl.importSave(await f.text()); }} />
+          </label>
         </div>
-        <button class="btn ghost" style={{ width: '100%', marginTop: 8 }} onClick={() => { ctrl.save(true); ctrl.screen = 'title'; ctrl.panel = null; notify(); }}>Salir al inicio</button>
+        <div class="grid2" style={{ marginTop: 8 }}>
+          <button class="btn" onClick={() => { ctrl.panel = 'codex'; notify(); }}><Icon name="knowledge" /> Códice</button>
+          <button class="btn ghost" onClick={() => { ctrl.save(true); ctrl.screen = 'title'; ctrl.panel = null; notify(); }}>Salir al inicio</button>
+        </div>
         <div class="section">
           <span class="eyebrow">Ajustes</span>
           <div class="card">
@@ -168,6 +234,12 @@ export function MenuPanel() {
               </div>
             ))}
             <label class="kv" style={{ cursor: 'pointer' }}><span class="k">Reducir animaciones</span><input type="checkbox" checked={st.reducedMotion} onChange={() => set('reducedMotion')} /></label>
+            <label class="kv" style={{ cursor: 'pointer' }}><span class="k">Colores para daltonismo</span><input type="checkbox" checked={st.colorblind} onChange={() => set('colorblind')} /></label>
+            <label class="kv" style={{ cursor: 'pointer' }}><span class="k">Pausar ante sucesos importantes</span><input type="checkbox" checked={st.autoPauseEvents} onChange={() => set('autoPauseEvents')} /></label>
+            <label class="kv" style={{ cursor: 'pointer' }}><span class="k">Informe cada 50 años</span><input type="checkbox" checked={st.reports} onChange={() => set('reports')} /></label>
+            <div class="kv" style={{ alignItems: 'center' }}><span class="k">Tamaño de la interfaz</span>
+              <span class="seg">{[1, 1.12, 1.25].map((v, i) => <button key={v} class={st.textScale === v ? 'on' : ''} onClick={() => { st.textScale = v; ctrl.saveSettings(); }}>{['Normal', 'Grande', 'Muy grande'][i]}</button>)}</span>
+            </div>
           </div>
         </div>
         <div class="section">

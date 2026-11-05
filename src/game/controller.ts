@@ -9,12 +9,13 @@ import { BUILDING } from '../data/buildings';
 import { TECH } from '../data/techs';
 import { canBuildAt, startBuild, cancelBuild, togglePause, sendColonists, canColonize, sendScout, fortify, hurry, marketTrade } from '../sim/actions';
 import { buildingYield, placeCtx, progressResearch, simulateEconomy } from '../sim/economy';
-import { encodeExplored, getExplored, settlementById, tileAt, capitalOf, reveal } from '../sim/world';
+import { encodeExplored, getExplored, settlementById, tileAt, capitalOf, reveal, civSettlements } from '../sim/world';
 import { applyEffects, queueEvent, EVENT, makeCtx, getChoices, applyChoice, choiceAvailable } from '../sim/events';
 import { adoptPolicy, canAdoptPolicy, changeGovernment, govChangeCost, revokePolicy } from '../sim/politics';
 import { doDiplo } from '../sim/diplomacy';
 import { advanceScouts } from '../sim/actions';
-import { AMBITIONS } from '../data/ambitions';
+import { AMBITIONS, legacyBreakdown } from '../data/ambitions';
+import { clearSpriteCache } from '../render/sprites';
 import { sfx, startAudio, audioFrame, applyAudioSettings, setMusicContext, setAmbience } from './audio';
 import { builtLog } from '../sim/economy';
 import { checkTutorial } from '../sim/tutorial';
@@ -49,6 +50,9 @@ export interface Settings {
   music: number;
   sfx: number;
   ambience: number;
+  textScale: number;
+  colorblind: boolean;
+  reports: boolean;
 }
 
 export class Controller {
@@ -60,13 +64,16 @@ export class Controller {
   acc = 0;
   last = 0;
   running = false;
-  overlay: Overlay = { selected: null, hover: null, buildPreview: null, colonyPreview: null, mode: 'select', yearFrac: 0, reducedMotion: false };
+  overlay: Overlay = { lens: 'none', selected: null, hover: null, buildPreview: null, colonyPreview: null, mode: 'select', yearFrac: 0, reducedMotion: false };
   buildType: string | null = null;
   toasts: Toast[] = [];
   toastId = 1;
   panel: string | null = null;
   lastResult: { title: string; lines: string[] } | null = null;
-  settings: Settings = { reducedMotion: false, sound: true, autoPauseEvents: true, music: 0.6, sfx: 0.8, ambience: 0.6 };
+  settings: Settings = { reducedMotion: false, sound: true, autoPauseEvents: true, music: 0.6, sfx: 0.8, ambience: 0.6, textScale: 1, colorblind: false, reports: true };
+  log: Toast[] = [];
+  report: { from: number; to: number; d: Record<string, number>; snap: Record<string, number> } | null = null;
+  snap: Record<string, number> | null = null;
   audioClock = 0;
   screen: 'title' | 'game' = 'title';
   lastReport: YearReport | null = null;
@@ -96,7 +103,24 @@ export class Controller {
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(this.settings)); } catch {}
     this.overlay.reducedMotion = this.settings.reducedMotion;
     applyAudioSettings(this.settings);
+    this.applyLook();
     notify();
+  }
+
+  // Accesibilidad: tamaño de interfaz y paleta para daltónicos
+  applyLook() {
+    document.documentElement.style.setProperty('--ui-scale', String(this.settings.textScale || 1));
+    document.documentElement.dataset.scale = String(this.settings.textScale || 1);
+    if (!this.state) return;
+    const CB = ['#0072b2', '#e69f00', '#009e73', '#cc79a7', '#d55e00', '#56b4e9', '#7a5c00', '#333333', '#8c564b', '#7f7f7f', '#17becf'];
+    let changed = false;
+    for (const c of this.state.civs) {
+      const any = c as any;
+      if (this.settings.colorblind) {
+        if (!any.origColor) { any.origColor = c.color; c.color = CB[c.id % CB.length]; changed = true; }
+      } else if (any.origColor) { c.color = any.origColor; delete any.origColor; changed = true; }
+    }
+    if (changed && this.renderer) { clearSpriteCache(); this.renderer.borderCache = null; }
   }
 
   get player() {
@@ -155,6 +179,10 @@ export class Controller {
   }
 
   afterLoad() {
+    this.snap = null;
+    this.report = null;
+    setTimeout(() => this.applyLook(), 0);
+    this.log = [];
     this.overlay.selected = null;
     this.overlay.mode = 'select';
     this.buildType = null;
@@ -165,28 +193,55 @@ export class Controller {
   hasSave() {
     try { return !!localStorage.getItem(SAVE_KEY); } catch { return false; }
   }
-  saveInfo(): { year: number; name: string } | null {
+  saveInfo(slot = 0): { year: number; name: string; cal?: number } | null {
     try {
-      const raw = localStorage.getItem(SAVE_KEY + '.meta');
+      const raw = localStorage.getItem(this.key(slot) + '.meta');
       return raw ? JSON.parse(raw) : null;
     } catch { return null; }
   }
-  save(silent = false) {
+  key(slot: number) {
+    return slot ? `${SAVE_KEY}.slot${slot}` : SAVE_KEY;
+  }
+  exportSave(): string {
+    encodeExplored(this.state);
+    return JSON.stringify(this.state);
+  }
+  importSave(text: string): boolean {
+    try {
+      const st = JSON.parse(text) as GameState;
+      if (!st.tiles || !st.civs) throw new Error('formato');
+      this.state = migrate(st);
+      this.afterLoad();
+      this.renderer?.setState(this.state);
+      const cap = capitalOf(this.state, this.state.player);
+      if (cap) this.renderer?.centerOn(cap.col, cap.row, 1.2, true);
+      this.needCenter = true;
+      this.paused = true;
+      this.screen = 'game';
+      this.toast('Partida importada', undefined, 'good');
+      notify();
+      return true;
+    } catch {
+      this.toast('No se pudo importar', 'El archivo no es una partida válida.', 'bad');
+      return false;
+    }
+  }
+  save(silent = false, slot = 0) {
     if (!this.state) return;
     try {
       encodeExplored(this.state);
-      localStorage.setItem(SAVE_KEY, JSON.stringify(this.state));
-      localStorage.setItem(SAVE_KEY + '.meta', JSON.stringify({ year: this.state.year, name: this.player.name, cal: this.state.calendarStart }));
+      localStorage.setItem(this.key(slot), JSON.stringify(this.state));
+      localStorage.setItem(this.key(slot) + '.meta', JSON.stringify({ year: this.state.year, name: this.player.name, cal: this.state.calendarStart }));
       if (!silent) this.toast('Partida guardada', undefined, 'info');
     } catch (e) {
       this.toast('No se pudo guardar', 'El almacenamiento del navegador no está disponible.', 'bad');
     }
   }
-  load(): boolean {
+  load(slot = 0): boolean {
     try {
-      const raw = localStorage.getItem(SAVE_KEY);
+      const raw = localStorage.getItem(this.key(slot));
       if (!raw) return false;
-      const s = JSON.parse(raw) as GameState;
+      const s = migrate(JSON.parse(raw) as GameState);
       // los modificadores permanentes se guardaron con números grandes; nada que convertir
       this.state = s;
       this.afterLoad();
@@ -205,7 +260,9 @@ export class Controller {
   }
 
   toast(title: string, text?: string, tone: Toast['tone'] = 'info') {
-    this.toasts.push({ id: this.toastId++, title, text, tone, at: performance.now() });
+    const t = { id: this.toastId++, title, text, tone, at: performance.now() };
+    this.toasts.push(t);
+    if (this.state) { this.log.unshift({ ...t, at: this.state.year }); if (this.log.length > 80) this.log.pop(); }
     if (this.toasts.length > 4) this.toasts.shift();
     notify();
   }
@@ -365,6 +422,16 @@ export class Controller {
       // recordatorio suave
     }
     this.checkTut();
+    // Informe de la generación
+    const now = this.snapshot();
+    if (!this.snap) this.snap = now;
+    if (this.settings.reports && s.year % 50 === 0 && s.year > 1 && !s.gameOver) {
+      const d: Record<string, number> = {};
+      for (const k of Object.keys(now)) d[k] = now[k] - (this.snap[k] ?? 0);
+      this.report = { from: this.snap.year, to: s.year, d, snap: now };
+      this.snap = now;
+      this.paused = true;
+    }
     if (s.year - s.lastAutosave >= 10) {
       s.lastAutosave = s.year;
       this.save(true);
@@ -377,6 +444,21 @@ export class Controller {
     // recalcular vista previa
     if (this.overlay.mode === 'build' && this.buildType) this.computeBuildPreview();
     notify();
+  }
+
+  snapshot(): Record<string, number> {
+    const s = this.state;
+    const p = this.player;
+    return {
+      year: s.year,
+      pop: civSettlements(s, p.id).reduce((a, x) => a + x.pop, 0),
+      cities: civSettlements(s, p.id).length,
+      techs: p.techs.length,
+      legacy: legacyBreakdown(s, p).total,
+      units: (s.units ?? []).filter((u) => u.civ === p.id).length,
+      greats: p.greats?.length ?? 0,
+      traditions: p.traditions.length,
+    };
   }
 
   checkTut() {
@@ -917,6 +999,16 @@ export class Controller {
     this.overlay.selected = [c, r];
     notify();
   }
+}
+
+// Partidas de versiones anteriores: completar campos nuevos
+function migrate(s: GameState): GameState {
+  s.units ??= [];
+  s.camps ??= [];
+  for (const st of s.settlements) { st.queue ??= []; st.level ??= 0; }
+  for (const c of s.civs) { c.gp ??= {}; c.greats ??= []; }
+  s.version = 2;
+  return s;
 }
 
 // Calcula la contabilidad inicial sin avanzar el tiempo (para que la interfaz arranque con datos reales)

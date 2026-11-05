@@ -13,6 +13,7 @@ import { drawDepositIcon } from './icons';
 import { drawRegiment, drawCamp } from './unitArt';
 import { UNIT } from '../data/units';
 import { battleLog, defMax } from '../sim/military';
+import { settlementDefense } from '../sim/war';
 
 export interface Overlay {
   selected: [number, number] | null;
@@ -21,6 +22,7 @@ export interface Overlay {
   colonyPreview: Map<number, boolean> | null;
   mode: 'select' | 'build' | 'colony' | 'scout';
   selectedUnits?: number[];
+  lens?: 'none' | 'religion' | 'resources' | 'military' | 'mood';
   yearFrac: number; // 0..1 dentro del año actual
   reducedMotion: boolean;
 }
@@ -153,6 +155,7 @@ export class Renderer {
 
     // Fronteras
     this.drawBorders(g, ex);
+    if (ov.lens && ov.lens !== 'none') this.drawLens(g, ov.lens, c0, c1, r0, r1, ex);
 
     // Rutas comerciales y caminos
     this.drawRoutes(g, ov, ex);
@@ -832,6 +835,63 @@ export class Renderer {
       const w = 40;
       g.fillStyle = 'rgba(30,20,10,0.7)'; g.fillRect(x - w / 2 - 1, y - 30, w + 2, 5);
       g.fillStyle = '#c8b48a'; g.fillRect(x - w / 2, y - 29, (w * st.defHp) / max, 3);
+    }
+  }
+
+  drawLens(g: CanvasRenderingContext2D, lens: string, c0: number, c1: number, r0: number, r1: number, ex: Uint8Array) {
+    const s = this.state;
+    const byId = new Map(s.settlements.map((x) => [x.id, x]));
+    // velo para destacar la capa
+    g.fillStyle = 'rgba(30,22,14,0.28)';
+    g.fillRect(c0 * HEX_W - HEX_W, r0 * ROW_H - HEX_SIZE, (c1 - c0 + 3) * HEX_W, (r1 - r0 + 3) * ROW_H);
+    for (let r = r0; r <= r1; r++)
+      for (let c = c0; c <= c1; c++) {
+        const i = r * s.width + c;
+        if (!ex[i]) continue;
+        const t = s.tiles[i];
+        const [px, py] = hexToPixel(c, r);
+        let fill: string | null = null;
+        if (lens === 'religion') {
+          const st = t.sid >= 0 ? byId.get(t.sid) : undefined;
+          if (st && st.religion != null && st.religion >= 0) fill = alpha(s.civs[st.religion].color, 0.55);
+        } else if (lens === 'mood') {
+          const st = t.sid >= 0 ? byId.get(t.sid) : undefined;
+          if (st) {
+            const v = Math.max(0, Math.min(1, 0.5 + st.health * 0.05 - st.unrest / 120 - Math.max(0, st.pop / Math.max(1, st.housing) - 1)));
+            fill = `rgba(${Math.round(200 - v * 140)},${Math.round(70 + v * 120)},60,0.5)`;
+          }
+        } else if (lens === 'military') {
+          if (t.owner >= 0) {
+            const pl = s.civs[s.player];
+            const rel = pl.relations[t.owner];
+            fill = t.owner === pl.id ? 'rgba(80,140,200,0.35)' : rel?.state === 'war' ? 'rgba(200,50,40,0.5)' : rel?.state === 'alliance' ? 'rgba(80,170,90,0.4)' : 'rgba(200,180,120,0.25)';
+          }
+        } else if (lens === 'resources') {
+          if (t.dep) fill = 'rgba(240,210,120,0.45)';
+        }
+        if (fill) {
+          hexPath(g, px, py, HEX_SIZE - 0.5);
+          g.fillStyle = fill;
+          g.fill();
+        }
+        if (lens === 'resources' && t.dep) {
+          const d = DEPOSITS[t.dep];
+          if (!d.reveal || s.civs[s.player].techs.includes(d.reveal)) drawDepositIcon(g, t.dep, px, py, 2);
+        }
+      }
+    if (lens === 'military') {
+      for (const st of s.settlements) {
+        if (!ex[st.row * s.width + st.col]) continue;
+        const [x, y] = hexToPixel(st.col, st.row);
+        const def = settlementDefense(s, s.civs[st.civ], st);
+        g.fillStyle = 'rgba(30,20,10,0.75)';
+        roundRect(g, x - 16, y - 34, 32, 14, 7);
+        g.fill();
+        g.fillStyle = '#f3ead6';
+        g.font = '700 10px "Alegreya Sans", sans-serif';
+        g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.fillText(String(def), x, y - 27);
+      }
     }
   }
 

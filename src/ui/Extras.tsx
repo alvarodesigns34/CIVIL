@@ -149,3 +149,41 @@ export function PausedBadge() {
 }
 
 export { fmt, cls };
+
+// Capas del mapa
+const LENSES: { id: NonNullable<typeof ctrl.overlay.lens>; label: string; icon: string }[] = [
+  { id: 'none', label: 'Mapa', icon: 'eye' },
+  { id: 'resources', label: 'Recursos', icon: 'gold' },
+  { id: 'military', label: 'Militar', icon: 'sword' },
+  { id: 'religion', label: 'Fe', icon: 'star' },
+  { id: 'mood', label: 'Ánimo', icon: 'health' },
+];
+export function LensBar() {
+  const cur = ctrl.overlay.lens ?? 'none';
+  return (
+    <div class="lensbar" role="group" aria-label="Capas del mapa">
+      {LENSES.map((l) => (
+        <button key={l.id} class={cls(cur === l.id && 'on')} onClick={() => { ctrl.overlay.lens = l.id; notify(); }} title={l.label} aria-label={l.label}>
+          <Icon name={l.icon} />
+          <span>{l.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// Historial de avisos
+export function LogPopover({ onClose }: { onClose: () => void }) {
+  return (
+    <div class="pop logpop" onClick={onClose}>
+      <h4>Últimos avisos</h4>
+      {!ctrl.log.length && <div class="muted">Nada todavía.</div>}
+      {ctrl.log.slice(0, 40).map((t) => (
+        <div key={t.id} class={cls('logrow', 'tone-' + t.tone)}>
+          <span class="num muted">{t.at}</span>
+          <div><b>{t.title}</b>{t.text && <div class="muted">{t.text}</div>}</div>
+        </div>
+      ))}
+    </div>
+  );
+}

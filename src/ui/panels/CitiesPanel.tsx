@@ -9,6 +9,8 @@ import { RES_TITLE } from '../../sim/names';
 import { fmt, sgn, cls } from '../util';
 import type { ResId } from '../../sim/types';
 import { PanelShell } from './PanelShell';
+import { UnitIcon } from '../UnitCard';
+import { UNIT } from '../../data/units';
 
 export function CitiesPanel() {
   const [tab, setTab] = useState('cities');
@@ -16,6 +18,7 @@ export function CitiesPanel() {
   const p = ctrl.player;
   const sets = civSettlements(s, p.id).sort((a, b) => Number(b.capital) - Number(a.capital) || b.pop - a.pop);
   const tier = militaryTier(s, p);
+  const myUnits = (s.units ?? []).filter((u) => u.civ === p.id);
   return (
     <PanelShell title="Territorio" sub="Tus asentamientos, su gente y el mercado." tabs={[{ id: 'cities', label: 'Asentamientos' }, { id: 'market', label: 'Mercado' }, { id: 'army', label: 'Ejército' }]} tab={tab} onTab={setTab}>
       {tab === 'cities' && sets.map((st) => {
@@ -53,7 +56,7 @@ export function CitiesPanel() {
         <>
           <div class="card">
             <div class="grid2">
-              <div class="kv"><span class="k">Soldados</span><span class="v">{fmt(p.soldiers)}</span></div>
+              <div class="kv"><span class="k">Guarnición</span><span class="v">{fmt(p.garrison ?? 0)}</span></div>
               <div class="kv"><span class="k">Fuerza</span><span class="v">{fmt(p.strength)}</span></div>
             </div>
             <div class="kv"><span class="k">Armamento</span><span class="v">{tier.label} (×{tier.mult})</span></div>
@@ -69,6 +72,17 @@ export function CitiesPanel() {
               <button class="btn small" onClick={() => ctrl.toggleDefensive()}>{p.flags.defensive ? 'Pasar a ofensiva' : 'Pasar a defensiva'}</button>
             </div>
           </div>
+          <span class="eyebrow" style={{ display: 'block', margin: '16px 0 8px' }}>Regimientos ({myUnits.length})</span>
+          {!myUnits.length && <div class="muted" style={{ fontSize: 13.5 }}>No tienes tropas en campaña. Recluta desde la ficha de cualquier ciudad (tócala en el mapa).</div>}
+          {myUnits.map((u) => (
+            <button key={u.id} class="unit-row" onClick={() => { ctrl.selectUnits([u.id]); ctrl.renderer.centerOn(u.col, u.row); ctrl.panel = null; }}>
+              <UnitIcon type={u.type} color={p.color} color2={p.color2} size={36} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div class="row" style={{ justifyContent: 'space-between' }}><b>{UNIT[u.type].name}</b><span class="muted" style={{ fontSize: 12.5 }}>{u.name}</span></div>
+                <div class="bar" style={{ marginTop: 4, height: 6 }}><i style={{ width: `${Math.max(0, u.hp)}%`, background: u.hp > 60 ? 'var(--good)' : u.hp > 30 ? 'var(--gold)' : 'var(--bad)' }} /></div>
+              </div>
+            </button>
+          ))}
           <span class="eyebrow" style={{ display: 'block', margin: '16px 0 8px' }}>Defensa por asentamiento</span>
           {sets.map((st) => (
             <div class="kv" key={st.id}><span class="k">{st.name}</span><span class="v">{fmt(settlementDefense(s, p, st))}</span></div>

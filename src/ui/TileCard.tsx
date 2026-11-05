@@ -4,6 +4,7 @@ import { notify } from '../game/store';
 import { Icon, RES_COLOR } from './Icon';
 import { Emblem } from './Emblem';
 import { Thumb } from './Thumb';
+import { RecruitSection } from './UnitCard';
 import { settlementTier } from '../render/sprites';
 import { tileAt, settlementAt, settlementById } from '../sim/world';
 import { tileName, DEPOSITS, isLand } from '../data/terrain';
@@ -31,7 +32,7 @@ function CostPills({ cost }: { cost: Partial<Record<ResId, number>> }) {
 export function TileCard() {
   const sel = ctrl.overlay.selected;
   const [confirmDel, setConfirmDel] = useState(false);
-  if (!sel || ctrl.overlay.mode !== 'select') return null;
+  if (!sel || ctrl.overlay.mode !== 'select' || (ctrl.overlay.selectedUnits?.length ?? 0) > 0) return null;
   const s = ctrl.state;
   const p = ctrl.player;
   const [c, r] = sel;
@@ -95,6 +96,7 @@ export function TileCard() {
             </div>
           );
         })()}
+        {civ.isPlayer && <RecruitSection st={st} />}
         {civ.isPlayer && <div class="muted" style={{ fontSize: 13, marginTop: 10 }}>La población ociosa recolecta alimento en las casillas libres. Construye vivienda antes de que llegue el hacinamiento.</div>}
       </>
     );

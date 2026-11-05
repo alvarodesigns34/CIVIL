@@ -537,3 +537,33 @@ h1, h2, h3, h4 { font-family: var(--font-display); margin: 0; font-weight: 600; 
 }
 
 .obj-mini-t { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60vw; }
+
+/* ── Tropas */
+.unit-ico { display: block; flex: none; border-radius: 50%; }
+.unitcard { border-color: rgba(168, 50, 31, 0.45); }
+.unit-row { display: flex; gap: 10px; align-items: center; width: 100%; text-align: left; padding: 8px; border-radius: 10px; }
+.unit-row + .unit-row { border-top: 1px dashed var(--hairline); }
+.unit-row:hover { background: var(--paper-sunk); }
+.unit-actions .btn { min-height: 44px; }
+.recruit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+.recruit {
+  display: flex; flex-direction: column; align-items: center; text-align: center; gap: 2px; padding: 10px 6px; border-radius: 12px;
+  background: var(--paper-raised); border: 1px solid var(--hairline-strong); min-height: 44px;
+  transition: transform var(--dur-fast) var(--ease-out), border-color var(--dur-fast);
+}
+.recruit:hover { border-color: var(--ink); }
+.recruit:active { transform: scale(0.97); }
+.recruit.locked { opacity: 0.55; }
+.recruit .rn { font-weight: 700; font-size: 13.5px; line-height: 1.15; margin-top: 2px; }
+.recruit .rs { font-size: 11.5px; color: var(--ink-muted); }
+.recruit .rc { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; font-size: 11.5px; font-weight: 600; margin-top: 3px; }
+.recruit .rc span { display: inline-flex; align-items: center; gap: 2px; }
+.recruit .rc svg { width: 12px; height: 12px; }
+.recruit .rc .bad { color: var(--bad); }
+.recruit .rw { font-size: 11px; color: var(--bad); line-height: 1.2; margin-top: 2px; }
+
+.stat { display: inline-flex; align-items: center; gap: 3px; flex-wrap: wrap; justify-content: center; }
+.stat svg { width: 12px; height: 12px; }
+
+.unitcard .unit-row { padding: 5px 8px; }
+.unitcard { max-height: min(70vh, calc(100vh - var(--top-h) - 40px)); }

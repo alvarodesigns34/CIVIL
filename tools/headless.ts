@@ -2,6 +2,7 @@
 import { generateWorld } from '../src/sim/worldgen';
 import { yearTick, totalPop, rankings } from '../src/sim/game';
 import { aiYear } from '../src/sim/ai';
+import { stepMilitary, aiMilitary } from '../src/sim/military';
 import { RNG } from '../src/core/rng';
 import { EVENT, makeCtx, getChoices, choiceAvailable, applyChoice } from '../src/sim/events';
 import { civEra } from '../src/data/techs';
@@ -15,6 +16,7 @@ const t0 = Date.now();
 for (let y = 0; y < years && !state.gameOver; y++) {
   const rng = new RNG(state.rng + 17);
   aiYear(state, p, rng);
+  aiMilitary(state, p, rng);
   if (p.traditionOffer) { p.traditions.push(p.traditionOffer[0]); p.traditionOffer = null; }
   // Resolver eventos del jugador automáticamente
   for (const pe of state.events.pending.splice(0)) {
@@ -23,9 +25,10 @@ for (let y = 0; y < years && !state.gameOver; y++) {
     const ch = getChoices(def, ctx).filter((c) => choiceAvailable(c, ctx));
     if (ch.length) applyChoice(state, ctx, ch[0], rng);
   }
+  for (let k = 0; k < 8; k++) stepMilitary(state, 1 / 8);
   yearTick(state);
   if (state.year % 25 === 0) {
-    const line = state.civs.map((c) => `${c.name.slice(0, 8).padEnd(8)} ${c.alive ? '' : '✝'}p${Math.round(totalPop(state, c))} e${civEra(c.techs)} t${c.techs.length} s${state.settlements.filter((s) => s.civ === c.id).length} st${Math.round(c.stability)} f${Math.round(c.res.food)} g${Math.round(c.res.gold)} k${c.ledger.net.knowledge.toFixed(1)} m${c.strength}`).join(' | ');
+    const line = state.civs.map((c) => `${c.name.slice(0, 8).padEnd(8)} ${c.alive ? '' : '✝'}p${Math.round(totalPop(state, c))} e${civEra(c.techs)} t${c.techs.length} s${state.settlements.filter((s) => s.civ === c.id).length} st${Math.round(c.stability)} f${Math.round(c.res.food)} g${Math.round(c.res.gold)} k${c.ledger.net.knowledge.toFixed(1)} m${c.strength} u${(state.units ?? []).filter((u) => u.civ === c.id).length}`).join(' | ');
     console.log(`Año ${state.year}: ${line}`);
   }
 }

@@ -63,6 +63,8 @@ export interface Settlement {
   garrison: number; // soldados (calculado)
   defense: number; // calculado
   fort: number; // nivel de murallas 0..3
+  defHp?: number; // integridad de las defensas durante un asedio
+  queue?: { type: string; prog: number }[]; // reclutamiento
   loyalty: number; // 0..100 (asentamientos conquistados)
   origCiv: number; // civ fundadora
 }
@@ -119,6 +121,32 @@ export interface ModFx {
   opinion?: number; // opinión de otras civs
   borders?: number; // multiplicador crecimiento fronteras
   goodsDemand?: number; // multiplicador demanda de bienes
+}
+
+export interface Unit {
+  id: number;
+  civ: number; // -1 = bárbaros
+  type: string;
+  col: number;
+  row: number;
+  hp: number; // 0..100
+  xp: number;
+  path: [number, number][]; // casillas pendientes
+  prog: number; // progreso hacia la siguiente casilla (0..1)
+  order: 'idle' | 'move' | 'fortify' | 'raid' | 'campaign';
+  targetSid: number; // asentamiento objetivo de campaña (-1)
+  engaged: number; // id del enemigo con el que combate (0 = ninguno; <0 = un asentamiento)
+  name: string;
+  home: number; // asentamiento de origen
+  raidT: number;
+}
+
+export interface Camp {
+  id: number;
+  col: number;
+  row: number;
+  timer: number;
+  level: number;
 }
 
 export interface Army {
@@ -188,6 +216,7 @@ export interface Civ {
   startCol: number;
   startRow: number;
   collapseYears: number;
+  garrison?: number; // fuerza de guarnición (edificios militares)
   gp?: Record<string, number>; // puntos de personajes ilustres
   greats?: { name: string; type: string; year: number }[];
 }
@@ -231,6 +260,8 @@ export interface GameState {
   chronicle: ChronicleEntry[];
   wonders: Record<string, number>; // maravilla -> civ id
   armies: Army[];
+  units?: Unit[];
+  camps?: Camp[];
   scouts: { id: number; civ: number; col: number; row: number; path: [number, number][]; t: number }[];
   colonists: { id: number; civ: number; from: number; col: number; row: number; t: number; pop: number; name: string }[];
   difficulty: 'easy' | 'normal' | 'hard';

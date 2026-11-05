@@ -14,9 +14,10 @@ export function fortCost(level: number) {
 }
 
 export function settlementDefense(state: GameState, civ: Civ, s: Settlement) {
-  const share = civ.strength * (s.capital ? 0.35 : 0.2);
+  const g = civ.garrison ?? civ.strength / 6;
+  const share = g * (s.capital ? 0.45 : 0.25);
   const militia = s.pop * 0.05;
-  return Math.round((share + militia + 4) * (1 + s.fort * 0.5));
+  return Math.round((share + militia + 6) * (1 + s.fort * 0.5));
 }
 
 function enemiesOf(state: GameState, civ: Civ) {
@@ -49,37 +50,6 @@ export function yearlyWar(state: GameState, rng: RNG) {
       continue;
     }
     civ.warWeariness = Math.min(40, civ.warWeariness + 1.2);
-    if (state.armies.some((a) => a.civ === civ.id)) continue;
-    if (civ.strength < 6) continue;
-    // Objetivo: asentamiento enemigo más cercano
-    let best: { s: Settlement; from: Settlement; d: number } | null = null;
-    for (const e of enemies)
-      for (const ts of civSettlements(state, e.id))
-        for (const fs of civSettlements(state, civ.id)) {
-          const d = hexDistance(fs.col, fs.row, ts.col, ts.row);
-          if (!best || d < best.d) best = { s: ts, from: fs, d };
-        }
-    // El jugador puede fijar su objetivo
-    let forcedKind: 'army' | 'raid' | null = null;
-    if (civ.isPlayer && civ.flags.target) {
-      const ts = settlementById(state, civ.flags.target);
-      if (ts && enemies.some((e) => e.id === ts.civ)) {
-        let from: Settlement | null = null, fd = Infinity;
-        for (const fs of civSettlements(state, civ.id)) {
-          const d = hexDistance(fs.col, fs.row, ts.col, ts.row);
-          if (d < fd) { fd = d; from = fs; }
-        }
-        if (from) { best = { s: ts, from, d: fd }; forcedKind = civ.flags.targetRaid ? 'raid' : 'army'; }
-      } else civ.flags.target = 0;
-    }
-    if (!best || (best.d > 22 && !forcedKind)) continue;
-    const def = settlementDefense(state, state.civs[best.s.civ], best.s);
-    const str = civ.strength * 0.7;
-    const kind = forcedKind ?? (str > def * 0.75 ? 'army' : 'raid');
-    // La IA prudente no ataca si es muy inferior
-    if (!civ.isPlayer && str < def * 0.35 && rng.chance(0.6)) continue;
-    if (civ.isPlayer && civ.flags.defensive && !civ.flags.target) continue;
-    state.armies.push({ id: state.nextId++, civ: civ.id, target: best.s.id, from: best.from.id, strength: Math.round(str), t: 0, kind });
   }
   // Tratados de paz entre IA o propuestas al jugador
   for (const a of state.civs) {

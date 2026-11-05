@@ -10,6 +10,7 @@ import { emptyLedger, addIncome, addExpense } from './ledger';
 import { civFx, type Fx } from './mods';
 import { hexDistance } from '../core/hex';
 import { clamp } from '../core/noise';
+import { armyPower } from './military';
 
 const PRIORITY: Record<string, number> = { food: 0, materials: 1, military: 2, faith: 3, knowledge: 4, trade: 5, craft: 6, civic: 7, housing: 8, wonder: 9 };
 export const CENTER_HOUSING = 30;
@@ -381,7 +382,8 @@ export function simulateEconomy(state: GameState, civ: Civ) {
   }
 
   civ.soldiers = Math.round(soldiers);
-  civ.strength = Math.round(soldierPower * tier.mult * (1 + fx.military) * (0.6 + civ.stability / 250));
+  civ.garrison = Math.round((soldierPower * tier.mult * (1 + fx.military) * (0.6 + civ.stability / 250)) / 6);
+  civ.strength = Math.round(civ.garrison + armyPower(state, civ.id));
 
   // Lujos del año (para el próximo cálculo)
   L.luxuries = civLuxuries(state, civ);

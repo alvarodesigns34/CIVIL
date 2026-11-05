@@ -21,6 +21,11 @@ import { checkTutorial } from '../sim/tutorial';
 import { DECREE } from '../data/decrees';
 import { RES_NAME } from '../sim/names';
 import { civEra } from '../data/techs';
+import type { Unit } from '../sim/types';
+import { stepMilitary, deathLog, campLog, unitsAt, hostile, canEnter, orderMove, disband, recruit } from '../sim/military';
+import { UNIT } from '../data/units';
+import { settlementAt } from '../sim/world';
+import { isWater } from '../data/terrain';
 import { hexToPixel } from '../core/hex';
 
 export const SPEEDS = [0, 3.2, 1.7, 0.85, 0.35]; // segundos por año
@@ -213,6 +218,8 @@ export class Controller {
         const spy = SPEEDS[this.speed];
         this.acc += dt;
         advanceScouts(this.state, dt / spy);
+        stepMilitary(this.state, dt / spy);
+        this.militaryFeedback();
         if (this.acc >= spy) {
           this.acc -= spy;
           this.tick();
@@ -233,6 +240,31 @@ export class Controller {
     audioFrame(dt);
     requestAnimationFrame(this.frame);
   };
+
+  // Muertes, combates cercanos y pausa automática ante invasiones
+  invadedAt = -100;
+  militaryFeedback() {
+    const s = this.state;
+    const p = this.player;
+    for (const d of deathLog.splice(0)) {
+      this.renderer.unitDeath(d.col, d.row);
+      if (d.civ === p.id) { this.toast(`Hemos perdido un regimiento de ${UNIT[d.type].name.toLowerCase()}`, undefined, 'war'); sfx('battle', this.settings); }
+      else if (d.killer === p.id) { this.toast(`¡Victoria! Enemigo derrotado`, d.civ < 0 ? 'Una banda de saqueadores ha sido aniquilada.' : `${UNIT[d.type].name} de ${s.civs[d.civ].name} aniquilados.`, 'good'); sfx('battle', this.settings); }
+    }
+    for (const c of campLog.splice(0)) if (c.civ === p.id) { this.toast('Campamento bárbaro arrasado', `+${c.reward} de oro`, 'good'); sfx('victory', this.settings); }
+    // invasión: tropas hostiles en nuestro territorio
+    if (s.year - this.invadedAt > 6) {
+      const intr = (s.units ?? []).find((u) => hostile(s, p.id, u.civ) && s.tiles[u.row * s.width + u.col].owner === p.id);
+      if (intr) {
+        this.invadedAt = s.year;
+        this.toast(intr.civ < 0 ? '¡Bárbaros en nuestras tierras!' : `¡Tropas de ${s.civs[intr.civ].name} en nuestras tierras!`, 'Toca para verlas. Recluta tropas en una ciudad o envía las que tengas.', 'war');
+        sfx('war', this.settings);
+        if (this.settings.autoPauseEvents) this.paused = true;
+        this.renderer.centerOn(intr.col, intr.row);
+        notify();
+      }
+    }
+  }
 
   // Música y ambiente según lo que ocurre y lo que se ve
   updateSoundscape() {
@@ -421,6 +453,7 @@ export class Controller {
     canvas.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       this.cancelMode();
+      this.overlay.selectedUnits = [];
     });
     if (this.keysBound) return;
     this.keysBound = true;
@@ -431,7 +464,7 @@ export class Controller {
       switch (e.key) {
         case ' ': e.preventDefault(); if (!this.blockingEvent()) this.togglePause(); break;
         case '1': case '2': case '3': case '4': this.setSpeed(+e.key); break;
-        case 'Escape': this.cancelMode(); this.panel = null; this.overlay.selected = null; notify(); break;
+        case 'Escape': this.cancelMode(); this.panel = null; this.overlay.selected = null; this.overlay.selectedUnits = []; notify(); break;
         case 'ArrowLeft': case 'a': cam.pan(step, 0); break;
         case 'ArrowRight': case 'd': cam.pan(-step, 0); break;
         case 'ArrowUp': case 'w': cam.pan(0, step); break;
@@ -450,6 +483,21 @@ export class Controller {
     if (!hex) return;
     const [c, r] = hex;
     const s = this.state;
+    // Tropas seleccionadas: el toque es una orden
+    const sel = this.selectedUnits();
+    if (sel.length && this.overlay.mode === 'select') {
+      if (sel.some((u) => u.col === c && u.row === r) && !(sel[0].path.length)) {
+        this.clearUnits();
+        return;
+      }
+      const mineHere = unitsAt(s, c, r).filter((u) => u.civ === this.player.id);
+      if (mineHere.length && !sel.some((u) => mineHere.includes(u))) {
+        this.selectUnits(mineHere.map((u) => u.id));
+        return;
+      }
+      this.orderUnits(c, r);
+      return;
+    }
     if (!getExplored(s)[r * s.width + c]) {
       if (this.overlay.mode === 'scout') this.tryScout(c, r);
       return;
@@ -481,8 +529,86 @@ export class Controller {
       this.tryScout(c, r);
       return;
     }
+    // Tocar tropas propias las selecciona (si no hay ciudad propia, o si ya estaba seleccionada la casilla)
+    const mine = unitsAt(s, c, r).filter((u) => u.civ === this.player.id);
+    const st = settlementAt(s, c, r);
+    const again = this.overlay.selected && this.overlay.selected[0] === c && this.overlay.selected[1] === r;
+    if (mine.length && (!st || st.civ !== this.player.id || again)) {
+      this.selectUnits(mine.map((u) => u.id));
+      return;
+    }
     this.overlay.selected = [c, r];
     sfx('tap', this.settings);
+    notify();
+  }
+
+  // ───────────── Tropas
+  selectedUnits(): Unit[] {
+    const ids = new Set(this.overlay.selectedUnits ?? []);
+    return (this.state.units ?? []).filter((u) => ids.has(u.id));
+  }
+  selectUnits(ids: number[]) {
+    this.overlay.selectedUnits = ids;
+    this.overlay.selected = null;
+    sfx('select', this.settings);
+    notify();
+  }
+  clearUnits() {
+    this.overlay.selectedUnits = [];
+    notify();
+  }
+  orderUnits(c: number, r: number) {
+    const s = this.state;
+    const p = this.player;
+    const sel = this.selectedUnits();
+    const city = settlementAt(s, c, r);
+    const foeHere = unitsAt(s, c, r).some((u) => hostile(s, p.id, u.civ));
+    const t = tileAt(s, c, r)!;
+    if (t.owner >= 0 && t.owner !== p.id && !canEnter(s, p.id, t) && !foeHere) {
+      const o = s.civs[t.owner];
+      this.toast('Frontera cerrada', `No estáis en guerra con ${o.name}. Declarad la guerra o firmad paso libre para entrar.`, 'bad');
+      sfx('error', this.settings);
+      return;
+    }
+    let ok: boolean;
+    if (city && hostile(s, p.id, city.civ)) {
+      ok = orderMove(s, sel, [c, r], 'campaign', city.id);
+      if (ok) this.toast('¡Al asalto!', `Tus tropas marchan sobre ${city.name}. Rompe sus murallas y entra.`, 'war');
+    } else if (foeHere || (s.camps ?? []).some((x) => x.col === c && x.row === r)) {
+      ok = orderMove(s, sel, [c, r], 'move');
+      if (ok) this.toast('¡Al ataque!', undefined, 'war');
+    } else ok = orderMove(s, sel, [c, r], 'move');
+    if (!ok) {
+      this.toast('No hay camino', isWater(t) && !p.techs.includes('sailing') ? 'Necesitas Navegación para cruzar el agua.' : 'Tus tropas no pueden llegar allí.', 'bad');
+      sfx('error', this.settings);
+    } else sfx(foeHere || city ? 'war' : 'place', this.settings);
+    if (ok && this.paused && this.settings.autoPauseEvents) {
+      // en pausa: las órdenes quedan dadas; recordatorio suave
+    }
+    notify();
+  }
+  unitCommand(cmd: 'fortify' | 'raid' | 'home' | 'disband' | 'stop') {
+    const s = this.state;
+    const sel = this.selectedUnits();
+    for (const u of sel) {
+      if (cmd === 'fortify') { u.path = []; u.order = 'fortify'; }
+      if (cmd === 'stop') { u.path = []; u.order = 'idle'; }
+      if (cmd === 'raid') u.order = 'raid';
+      if (cmd === 'disband') disband(s, u);
+      if (cmd === 'home') {
+        const home = settlementById(s, u.home) ?? capitalOf(s, u.civ);
+        if (home) orderMove(s, [u], [home.col, home.row], 'move');
+      }
+    }
+    if (cmd === 'disband') this.clearUnits();
+    sfx('select', this.settings);
+    notify();
+  }
+  recruit(sid: number, type: string) {
+    const st = settlementById(this.state, sid)!;
+    const err = recruit(this.state, this.player, st, type);
+    if (err) { this.toast('No se puede reclutar', err, 'bad'); sfx('error', this.settings); }
+    else { sfx('build', this.settings); this.toast(`Reclutando ${UNIT[type].name.toLowerCase()}`, `Estarán listos en ${UNIT[type].time} año${UNIT[type].time > 1 ? 's' : ''} en ${st.name}.`, 'good'); }
     notify();
   }
 
@@ -780,6 +906,9 @@ if (import.meta.env.DEV) {
     for (let i = 0; i < years && !ctrl.state.gameOver; i++) {
       const p = ctrl.player;
       aiYear(ctrl.state, p, new RNG(ctrl.state.rng + i));
+      const mil = await import('../sim/military');
+      mil.aiMilitary(ctrl.state, p, new RNG(ctrl.state.rng + i * 3));
+      for (let k = 0; k < 6; k++) mil.stepMilitary(ctrl.state, 1 / 6);
       if (p.traditionOffer) { p.traditions.push(p.traditionOffer[0]); p.traditionOffer = null; }
       for (const pe of [...ctrl.state.events.pending]) ctrl.resolveEvent(pe, 0);
       ctrl.lastResult = null;

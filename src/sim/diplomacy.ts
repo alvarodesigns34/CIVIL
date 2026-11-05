@@ -157,6 +157,18 @@ export function makePeace(state: GameState, a: Civ, b: Civ, tribute: number) {
   b.warWeariness *= 0.5;
   addOpinionMod(state, a, b.id, 'peace', 'Tratado de paz', 10, 20);
   addOpinionMod(state, b, a.id, 'peace', 'Tratado de paz', 10, 20);
+  // las tropas en territorio del otro regresan a casa
+  for (const u of state.units ?? []) {
+    if (u.civ !== a.id && u.civ !== b.id) continue;
+    const other = u.civ === a.id ? b.id : a.id;
+    const t = state.tiles[u.row * state.width + u.col];
+    u.engaged = 0;
+    if (u.order === 'campaign') u.order = 'idle';
+    if (t.owner === other || (u.path.length && u.targetSid >= 0)) {
+      const home = civSettlements(state, u.civ).sort((x, y) => Math.abs(x.col - u.col) + Math.abs(x.row - u.row) - Math.abs(y.col - u.col) - Math.abs(y.row - u.row))[0];
+      if (home) { u.col = home.col; u.row = home.row; u.path = []; u.prog = 0; }
+    }
+  }
   state.armies = state.armies.filter((ar) => !((ar.civ === a.id && civOfSettlement(state, ar.target) === b.id) || (ar.civ === b.id && civOfSettlement(state, ar.target) === a.id)));
   state.chronicle.push({ year: state.year, civ: -1, kind: 'diplo', important: a.isPlayer || b.isPlayer, text: `Los ${a.people} y los ${b.people} firmaron la paz${tribute ? ` (tributo de ${Math.abs(tribute)} de oro)` : ''}.` });
 }

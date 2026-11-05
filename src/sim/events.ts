@@ -400,7 +400,10 @@ export function describeEffects(fx: Effect[], ctx: EventCtx): FxLine[] {
       case 'unrest': out.push({ text: `${sign(e.v)} malestar en ${ctx.s?.name ?? ''}`, tone: e.v > 0 ? 'bad' : 'good' }); break;
       case 'warScore': out.push({ text: `${sign(e.v)} puntuación de guerra`, tone: e.v > 0 ? 'good' : 'bad' }); break;
       case 'chance':
-        out.push({ text: e.label ?? `${Math.round(e.p * 100)}% de probabilidad`, tone: 'neutral', sub: [...describeEffects(e.then, ctx), ...(e.else ? [{ text: 'si no:', tone: 'neutral' as const, sub: describeEffects(e.else, ctx) }] : [])] });
+        {
+          const els = e.else ? describeEffects(e.else, ctx) : [];
+          out.push({ text: e.label ?? `${Math.round(e.p * 100)}% de probabilidad`, tone: 'neutral', sub: [...describeEffects(e.then, ctx), ...(els.length ? [{ text: 'si no:', tone: 'neutral' as const, sub: els }] : [])] });
+        }
         break;
       case 'custom': out.push({ text: e.label, tone: 'neutral' }); break;
       default: break;

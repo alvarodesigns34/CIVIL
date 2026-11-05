@@ -7,6 +7,7 @@ import { offerTraditions, advanceColonists } from './actions';
 import { yearlyLeader } from './politics';
 import { yearlyGreatPeople } from './greatPeople';
 import { yearlyWar, checkElimination } from './war';
+import { yearlyMilitary } from './military';
 import { updateContacts, yearlyDiplomacy } from './diplomacy';
 import { aiYear } from './ai';
 import { rollEvents, queueEvent, fire, EVENT } from './events';
@@ -106,6 +107,7 @@ export function yearTick(state: GameState): YearReport {
 
   advanceColonists(state, rng);
   yearlyWar(state, rng);
+  yearlyMilitary(state, rng);
   updateContacts(state, rng);
   yearlyDiplomacy(state, rng);
   for (const civ of state.civs) if (civ.alive && !civ.isPlayer) aiYear(state, civ, rng);

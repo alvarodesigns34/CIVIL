@@ -10,6 +10,9 @@ import { DEPOSITS } from '../data/terrain';
 import { hash2 } from '../core/rng';
 import { INK, alpha } from './palette';
 import { drawDepositIcon } from './icons';
+import { drawRegiment, drawCamp } from './unitArt';
+import { UNIT } from '../data/units';
+import { battleLog, defMax } from '../sim/military';
 
 export interface Overlay {
   selected: [number, number] | null;
@@ -17,6 +20,7 @@ export interface Overlay {
   buildPreview: Map<number, { ok: boolean; label?: string; good?: boolean }> | null;
   colonyPreview: Map<number, boolean> | null;
   mode: 'select' | 'build' | 'colony' | 'scout';
+  selectedUnits?: number[];
   yearFrac: number; // 0..1 dentro del año actual
   reducedMotion: boolean;
 }
@@ -251,6 +255,7 @@ export class Renderer {
 
     // Unidades en movimiento
     this.drawMovers(g, ov);
+    this.drawUnits(g, dt, ov, ex);
 
     // Selección y cursor
     if (ov.hover && ov.mode !== 'select') this.hexOutline(g, ov.hover[0], ov.hover[1], 'rgba(255,250,220,0.9)', 2.5);
@@ -659,6 +664,177 @@ export class Renderer {
     }
   }
 
+  projectiles: { x0: number; y0: number; x1: number; y1: number; t: number; dur: number; kind: string }[] = [];
+  unitPos(u: { col: number; row: number; path: [number, number][]; prog: number }): [number, number] {
+    const [x, y] = hexToPixel(u.col, u.row);
+    if (!u.path.length) return [x, y];
+    const [x1, y1] = hexToPixel(u.path[0][0], u.path[0][1]);
+    return [x + (x1 - x) * u.prog, y + (y1 - y) * u.prog];
+  }
+  unitDeath(col: number, row: number) {
+    const [x, y] = hexToPixel(col, row);
+    for (let i = 0; i < 14; i++) this.smoke.push({ x: x + (Math.random() - 0.5) * 16, y: y - 4, life: 1, vx: (Math.random() - 0.5) * 14 });
+    for (let i = 0; i < 10; i++) { const a = Math.random() * 6.28; this.sparks.push({ x, y: y - 6, vx: Math.cos(a) * 30, vy: Math.sin(a) * 30 - 30, life: 0.8, c: '#8a2a1a', r: 1.4 }); }
+  }
+
+  drawUnits(g: CanvasRenderingContext2D, dt: number, ov: Overlay, ex: Uint8Array) {
+    const s = this.state;
+    const list = s.units ?? [];
+    const sel = new Set(ov.selectedUnits ?? []);
+    const t = this.time;
+    // campamentos bárbaros
+    for (const c of s.camps ?? []) {
+      if (!ex[c.row * s.width + c.col]) continue;
+      const [x, y] = hexToPixel(c.col, c.row);
+      drawCamp(g, x, y + 4, t);
+    }
+    // rutas de las unidades seleccionadas
+    for (const u of list) {
+      if (!sel.has(u.id) || !u.path.length) continue;
+      g.strokeStyle = 'rgba(255,240,190,0.9)';
+      g.lineWidth = 3 / Math.max(0.6, this.cam.zoom);
+      g.setLineDash([6, 5]);
+      g.lineDashOffset = -t * 12;
+      g.beginPath();
+      const [sx, sy] = this.unitPos(u);
+      g.moveTo(sx, sy);
+      for (const [c, r] of u.path) { const [x, y] = hexToPixel(c, r); g.lineTo(x, y); }
+      g.stroke();
+      g.setLineDash([]);
+      const [dc, dr] = u.path[u.path.length - 1];
+      const [dx, dy] = hexToPixel(dc, dr);
+      flag(g, dx, dy + 6, 14, '#e2c044', '#2a2119');
+    }
+    // agrupar por casilla para repartir posiciones
+    const groups = new Map<number, typeof list>();
+    for (const u of list) {
+      const k = u.row * s.width + u.col;
+      (groups.get(k) ?? groups.set(k, []).get(k)!).push(u);
+    }
+    const drawn: { u: (typeof list)[0]; x: number; y: number }[] = [];
+    const hidden = new Set<number>();
+    const stackBadges: { x: number; y: number; n: number; color: string }[] = [];
+    for (const [k, arr] of groups) {
+      if (!ex[k]) continue;
+      // pilas grandes: se dibujan tres regimientos y una insignia con el total
+      const still = arr.filter((u) => !u.path.length || u.prog === 0);
+      if (still.length > 3) {
+        const extra = still.slice(3);
+        const [bx, by] = hexToPixel(arr[0].col, arr[0].row);
+        stackBadges.push({ x: bx + 16, y: by - 14, n: still.length, color: arr[0].civ >= 0 ? s.civs[arr[0].civ].color : '#3a2420' });
+        for (const e of extra) hidden.add(e.id);
+      }
+      arr.filter((u) => !hidden.has(u.id)).forEach((u, i, vis) => {
+        let [x, y] = this.unitPos(u);
+        if (!u.path.length || u.prog === 0) {
+          const n = vis.length;
+          if (n > 1) { const a = (i / n) * Math.PI * 2 + 0.6; x += Math.cos(a) * 11; y += Math.sin(a) * 7 + 6; }
+          else y += 8;
+        }
+        drawn.push({ u, x, y });
+      });
+    }
+    drawn.sort((a, b) => a.y - b.y);
+    const scale = this.cam.zoom < 0.7 ? 1.5 : 1.1;
+    for (const { u, x, y } of drawn) {
+      const def = UNIT[u.type];
+      const civ = u.civ >= 0 ? s.civs[u.civ] : null;
+      const color = civ?.color ?? '#3a2420';
+      const color2 = civ?.color2 ?? '#efe4c8';
+      if (sel.has(u.id)) {
+        const p = 0.6 + Math.sin(t * 5) * 0.3;
+        g.strokeStyle = `rgba(226,192,68,${p})`;
+        g.lineWidth = 2.4;
+        g.beginPath(); g.ellipse(x, y + 1, 14 * scale, 5 * scale, 0, 0, Math.PI * 2); g.stroke();
+      } else if (u.engaged) {
+        g.strokeStyle = `rgba(200,60,40,${0.5 + Math.sin(t * 9) * 0.3})`;
+        g.lineWidth = 2;
+        g.beginPath(); g.ellipse(x, y + 1, 13 * scale, 4.5 * scale, 0, 0, Math.PI * 2); g.stroke();
+      }
+      g.save();
+      g.translate(x, y);
+      const jitter = u.engaged ? Math.sin(t * 20 + u.id) * 0.8 : 0;
+      g.translate(jitter, 0);
+      drawRegiment(g, def.glyph, color, color2, t + u.id, u.path.length > 0 || !!u.engaged, scale);
+      g.restore();
+      // barra de vida
+      const w = 18 * scale;
+      g.fillStyle = 'rgba(30,20,10,0.6)';
+      g.fillRect(x - w / 2 - 0.5, y + 4.5 * scale, w + 1, 3.2);
+      g.fillStyle = u.hp > 60 ? '#7fbf5a' : u.hp > 30 ? '#e2c044' : '#d0563a';
+      g.fillRect(x - w / 2, y + 5 * scale, (w * Math.max(0, u.hp)) / 100, 2.2);
+      if (u.order === 'fortify' && !u.path.length) {
+        g.fillStyle = '#efe4c8'; g.strokeStyle = INK; g.lineWidth = 0.8;
+        g.beginPath(); g.moveTo(x + w / 2 + 2, y + 2); g.lineTo(x + w / 2 + 6, y + 2); g.lineTo(x + w / 2 + 6, y + 6); g.lineTo(x + w / 2 + 4, y + 8); g.lineTo(x + w / 2 + 2, y + 6); g.closePath(); g.fill(); g.stroke();
+      }
+      if (u.xp >= 10) {
+        g.fillStyle = '#e2c044';
+        const lv = Math.min(5, Math.floor(u.xp / 10));
+        for (let i = 0; i < lv; i++) g.fillRect(x - w / 2 + i * 3, y + 9 * scale, 2, 1.6);
+      }
+    }
+    for (const b of stackBadges) {
+      g.fillStyle = b.color;
+      g.beginPath(); g.arc(b.x, b.y, 7.5, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = '#f3ead6'; g.lineWidth = 1.5; g.stroke();
+      g.fillStyle = '#fff8e8';
+      g.font = '700 9px "Alegreya Sans", sans-serif';
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(String(b.n), b.x, b.y + 0.5);
+    }
+    // proyectiles e impactos
+    const posOf = new Map(drawn.map((d) => [d.u.id, [d.x, d.y - 6] as [number, number]]));
+    for (const b of battleLog.splice(0)) {
+      const a = posOf.get(b.a);
+      if (!a) continue;
+      let target: [number, number] | undefined;
+      if (b.b > 0) target = posOf.get(b.b);
+      else if (b.b < 0) { const st = s.settlements.find((x) => x.id === -b.b); if (st) { const [px, py] = hexToPixel(st.col, st.row); target = [px + (Math.random() - 0.5) * 14, py - 6]; } }
+      if (!target) target = [a[0] + 6, a[1]];
+      const dur = b.kind === 'melee' ? 0.25 : b.kind === 'stone' ? 0.9 : b.kind === 'shot' ? 0.12 : 0.45;
+      this.projectiles.push({ x0: a[0], y0: a[1], x1: target[0], y1: target[1], t: 0, dur, kind: b.kind });
+      if (this.projectiles.length > 160) this.projectiles.shift();
+    }
+    for (const p of this.projectiles) {
+      p.t += dt;
+      const f = Math.min(1, p.t / p.dur);
+      if (p.kind === 'melee') {
+        const mx = (p.x0 + p.x1) / 2, my = (p.y0 + p.y1) / 2;
+        g.strokeStyle = `rgba(255,235,170,${1 - f})`;
+        g.lineWidth = 1.4;
+        g.beginPath();
+        for (let k = 0; k < 4; k++) { const a = k * 1.57 + f * 3; g.moveTo(mx, my); g.lineTo(mx + Math.cos(a) * (3 + f * 7), my + Math.sin(a) * (3 + f * 7)); }
+        g.stroke();
+      } else {
+        const x = p.x0 + (p.x1 - p.x0) * f;
+        const arc = p.kind === 'stone' ? 40 : p.kind === 'arrow' ? 16 : 0;
+        const y = p.y0 + (p.y1 - p.y0) * f - Math.sin(f * Math.PI) * arc;
+        if (p.kind === 'arrow') {
+          const ang = Math.atan2((p.y1 - p.y0) - Math.cos(f * Math.PI) * arc * Math.PI, p.x1 - p.x0);
+          g.strokeStyle = '#2a2119'; g.lineWidth = 1;
+          g.beginPath(); g.moveTo(x, y); g.lineTo(x - Math.cos(ang) * 5, y - Math.sin(ang) * 5); g.stroke();
+        } else if (p.kind === 'stone') {
+          g.fillStyle = '#5a554e'; g.beginPath(); g.arc(x, y, 2.2, 0, Math.PI * 2); g.fill();
+        } else {
+          g.fillStyle = `rgba(255,220,140,${1 - f})`; g.beginPath(); g.arc(p.x0, p.y0, 3 + f * 3, 0, Math.PI * 2); g.fill();
+        }
+        if (f >= 1 && p.t - p.dur < dt * 1.5) {
+          for (let k = 0; k < (p.kind === 'stone' ? 6 : 2); k++) this.smoke.push({ x: p.x1 + (Math.random() - 0.5) * 6, y: p.y1, life: 0.7, vx: (Math.random() - 0.5) * 10 });
+        }
+      }
+    }
+    this.projectiles = this.projectiles.filter((p) => p.t < p.dur + 0.05);
+    // barras de integridad de murallas en asedio
+    for (const st of s.settlements) {
+      if (!st.siege || !ex[st.row * s.width + st.col] || st.defHp == null) continue;
+      const max = defMax(s, st);
+      const [x, y] = hexToPixel(st.col, st.row);
+      const w = 40;
+      g.fillStyle = 'rgba(30,20,10,0.7)'; g.fillRect(x - w / 2 - 1, y - 30, w + 2, 5);
+      g.fillStyle = '#c8b48a'; g.fillRect(x - w / 2, y - 29, (w * st.defHp) / max, 3);
+    }
+  }
+
   drawSparks(g: CanvasRenderingContext2D, dt: number) {
     for (const r of this.rings) {
       r.life -= dt * 0.9;
@@ -895,7 +1071,7 @@ export class Renderer {
       if (st.siege > 0) {
         g.fillStyle = '#b4432a';
         g.font = `700 ${fs - 2}px "Alegreya Sans", sans-serif`;
-        g.fillText('⚔ asedio', lx + w + 4, y + 1);
+        g.fillText('ASEDIO', lx + w + 4, y + 1);
       }
     }
     void ov;
